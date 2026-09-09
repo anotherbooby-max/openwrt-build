@@ -9,12 +9,41 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-24.04
+    timeout-minutes: 360
 
     steps:
 
+      # ========================================
+      # 1. Checkout
+      # ========================================
       - name: Checkout build repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
+      # ========================================
+      # 2. Free disk space
+      # ========================================
+      - name: Free disk space
+        run: |
+          echo "========== Disk before cleanup =========="
+          df -h
+
+          echo "========== Remove large preinstalled SDKs =========="
+
+          sudo rm -rf /usr/local/lib/android || true
+          sudo rm -rf /usr/share/dotnet || true
+          sudo rm -rf /opt/ghc || true
+          sudo rm -rf /usr/local/share/powershell || true
+          sudo rm -rf /usr/local/share/chromium || true
+
+          sudo apt-get clean || true
+          sudo rm -rf /var/lib/apt/lists/* || true
+
+          echo "========== Disk after cleanup =========="
+          df -h
+
+      # ========================================
+      # 3. Install dependencies
+      # ========================================
       - name: Install dependencies
         run: |
           sudo apt update
@@ -88,31 +117,30 @@ jobs:
             xmlto \
             xxd \
             zlib1g-dev
-            
-- name: Free disk space
-  run: |
-    echo "========== Disk before cleanup =========="
-    df -h
 
-    sudo rm -rf /usr/local/lib/android
-    sudo rm -rf /usr/share/dotnet
-    sudo rm -rf /opt/ghc
-    sudo rm -rf /usr/local/share/powershell
-    sudo rm -rf /usr/local/share/chromium
-    sudo rm -rf /opt/hostedtoolcache
+          echo "========== Clean APT cache =========="
+          sudo apt-get clean
+          sudo rm -rf /var/lib/apt/lists/*
 
-    sudo apt-get clean
-    sudo rm -rf /var/lib/apt/lists/*
+          echo "========== Disk after dependencies =========="
+          df -h
 
-    echo "========== Disk after cleanup =========="
-    df -h
-
+      # ========================================
+      # 4. Clone LEDE
+      # ========================================
       - name: Clone LEDE
         run: |
           git clone --depth=1 \
             https://github.com/coolsnowwolf/lede.git \
             lede
 
+          echo "========== LEDE cloned =========="
+          du -sh lede
+          df -h
+
+      # ========================================
+      # 5. Add kenzok8 packages
+      # ========================================
       - name: Add kenzok8 packages
         run: |
           cd lede
@@ -120,6 +148,12 @@ jobs:
           echo 'src-git kenzo https://github.com/kenzok8/openwrt-packages' \
             >> feeds.conf.default
 
+          echo "========== feeds.conf.default =========="
+          tail -n 10 feeds.conf.default
+
+      # ========================================
+      # 6. Update feeds
+      # ========================================
       - name: Update feeds
         run: |
           cd lede
@@ -127,36 +161,129 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
+          echo "========== Disk after feeds =========="
+          df -h
+
+      # ========================================
+      # 7. Load configuration
+      # ========================================
       - name: Load configuration
         run: |
           cd lede
 
           cp ../configs/x86_64.config .config
 
+          echo "========== Custom config =========="
+          cat ../configs/x86_64.config
+
           make defconfig
 
+          echo "========== Final config check =========="
+          grep -E \
+            'CONFIG_TARGET_x86|CONFIG_PACKAGE_luci|CONFIG_PACKAGE_kmod-(cfg80211|mac80211)' \
+            .config || true
+
+      # ========================================
+      # 8. Download sources
+      # ========================================
       - name: Download sources
         run: |
           cd lede
 
-          make download -j8
+          echo "========== Disk before download =========="
+          df -h
 
+          make download -j2
+
+          echo "========== Disk after download =========="
+          df -h
+
+      # ========================================
+      # 9. Build OpenWrt
+      # ========================================
       - name: Build OpenWrt
         run: |
           cd lede
 
+          echo "========================================"
+          echo "        START OPENWRT BUILD"
+          echo "========================================"
+
+          echo "========== Disk before build =========="
+          df -h
+
+          echo "========== Memory =========="
+          free -h
+
+          echo "========== CPU =========="
+          nproc
+
+          echo "========== Build =========="
           make V=s -j2
 
+          echo "========== Disk after build =========="
+          df -h
+
+      # ========================================
+      # 10. Show build files
+      # ========================================
       - name: Show build files
+        if: success()
         run: |
           cd lede
 
-          echo "========== BUILD OUTPUT =========="
-          find bin/targets/x86/64 -maxdepth 2 -type f | sort
+          echo "========================================"
+          echo "        BUILD OUTPUT"
+          echo "========================================"
 
+          find bin/targets/x86/64 \
+            -maxdepth 2 \
+            -type f \
+            -printf '%p\t%k KB\n' \
+            | sort
+
+          echo
+          echo "========== Output directory size =========="
+          du -sh bin/targets/x86/64
+
+      # ========================================
+      # 11. Upload firmware artifact
+      # ========================================
       - name: Upload firmware artifact
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: openwrt-x86-64
           path: lede/bin/targets/x86/64/
           if-no-files-found: error
+
+      # ========================================
+      # 12. Build failure diagnostics
+      # ========================================
+      - name: Build failure diagnostics
+        if: failure()
+        run: |
+          echo "========================================"
+          echo "        BUILD FAILED"
+          echo "========================================"
+
+          echo "========== Disk =========="
+          df -h
+
+          echo
+          echo "========== Inode =========="
+          df -i
+
+          echo
+          echo "========== Memory =========="
+          free -h
+
+          echo
+          echo "========== LEDE size =========="
+          du -sh lede 2>/dev/null || true
+
+          echo
+          echo "========== Largest LEDE directories =========="
+          du -xh lede --max-depth=2 2>/dev/null \
+            | sort -h \
+            | tail -n 30 || true
