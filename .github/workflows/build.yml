@@ -88,6 +88,24 @@ jobs:
             xmlto \
             xxd \
             zlib1g-dev
+            
+- name: Free disk space
+  run: |
+    echo "========== Disk before cleanup =========="
+    df -h
+
+    sudo rm -rf /usr/local/lib/android
+    sudo rm -rf /usr/share/dotnet
+    sudo rm -rf /opt/ghc
+    sudo rm -rf /usr/local/share/powershell
+    sudo rm -rf /usr/local/share/chromium
+    sudo rm -rf /opt/hostedtoolcache
+
+    sudo apt-get clean
+    sudo rm -rf /var/lib/apt/lists/*
+
+    echo "========== Disk after cleanup =========="
+    df -h
 
       - name: Clone LEDE
         run: |
