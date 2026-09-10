@@ -1,4 +1,4 @@
-name: Build OpenWrt x86_64
+name: Build OpenWrt x86_64 WiFi
 
 on:
   workflow_dispatch:
@@ -6,477 +6,302 @@ on:
 permissions:
   contents: write
 
+
 jobs:
+
   build:
+
     runs-on: ubuntu-22.04
+
     timeout-minutes: 360
+
 
     steps:
 
-      # ============================================================
-      # 1. Checkout
-      # ============================================================
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      # ============================================================
-      # 2. Free disk space
-      # ============================================================
-      - name: Free disk space
-        run: |
-          echo "========================================"
-          echo "        FREE DISK SPACE"
-          echo "========================================"
-
-          sudo rm -rf /usr/local/lib/node_modules || true
-          sudo rm -rf /usr/local/lib/android || true
-          sudo rm -rf /usr/share/dotnet || true
-          sudo rm -rf /usr/local/.ghcup || true
-          sudo rm -rf /usr/local/share/powershell || true
-          sudo rm -rf /usr/local/share/chromium || true
-          sudo rm -rf /opt/ghc || true
-          sudo rm -rf /opt/hostedtoolcache/CodeQL || true
-          sudo rm -rf /usr/share/swift || true
-          sudo rm -rf /usr/local/lib/heroku || true
-
-          sudo apt-get clean || true
-
-          echo
-          echo "========== DISK =========="
-          df -h
-
-      # ============================================================
-      # 3. Install build dependencies
-      # ============================================================
-      - name: Install dependencies
-        run: |
-          echo "========================================"
-          echo "        INSTALL DEPENDENCIES"
-          echo "========================================"
-
-          sudo apt-get update
-
-          sudo apt-get install -y \
-            build-essential \
-            clang \
-            flex \
-            bison \
-            gawk \
-            gcc-multilib \
-            g++-multilib \
-            gettext \
-            git \
-            libncurses5-dev \
-            libncursesw5-dev \
-            libssl-dev \
-            python3 \
-            python3-distutils \
-            python3-setuptools \
-            rsync \
-            unzip \
-            zlib1g-dev \
-            file \
-            wget \
-            curl \
-            time \
-            xsltproc \
-            swig \
-            libelf-dev \
-            ecj \
-            fastjar \
-            java-propose-classpath \
-            rename \
-            qemu-utils \
-            device-tree-compiler
-
-          echo
-          echo "========== TOOL VERSIONS =========="
-          gcc --version | head -1
-          make --version | head -1
-          python3 --version
-          git --version
-
-      # ============================================================
-      # 4. Clone coolsnowwolf/lede
-      # ============================================================
-      - name: Clone LEDE source
-        run: |
-          echo "========================================"
-          echo "        CLONE LEDE SOURCE"
-          echo "========================================"
-
-          git clone --depth=1 \
-            https://github.com/coolsnowwolf/lede.git \
-            lede
-
-          cd lede
-
-          echo
-          echo "========== LEDE COMMIT =========="
-          git log -1 --oneline
-
-          echo
-          echo "========== KERNEL =========="
-          grep -E \
-            'LINUX_VERSION|KERNEL_PATCHVER' \
-            include/kernel-version.mk \
-            target/linux/*/Makefile \
-            2>/dev/null || true
-
-      # ============================================================
-      # 5. Add kenzok8 packages feed
-      # ============================================================
-      - name: Add kenzok8 packages
-        run: |
-          cd lede
-
-          echo "========================================"
-          echo "        ADD KENZOK8 FEED"
-          echo "========================================"
-
-          echo "src-git kenzok8 https://github.com/kenzok8/openwrt-packages.git" \
-            >> feeds.conf.default
-
-          echo
-          echo "========== feeds.conf.default =========="
-          cat feeds.conf.default
-
-      # ============================================================
-      # 6. Update feeds
-      # ============================================================
-      - name: Update feeds
-        run: |
-          cd lede
-
-          echo "========================================"
-          echo "        UPDATE FEEDS"
-          echo "========================================"
-
-          ./scripts/feeds update -a
-
-      # ============================================================
-      # 7. Install feeds
-      # ============================================================
-      - name: Install feeds
-        run: |
-          cd lede
-
-          echo "========================================"
-          echo "        INSTALL FEEDS"
-          echo "========================================"
-
-          ./scripts/feeds install -a
-
-      # ============================================================
-      # 8. Load configuration
-      #
-      # IMPORTANT:
-      # First make defconfig.
-      # Then force SSL / WiFi / cshark settings.
-      #
-      # Do NOT run make defconfig again after the forced changes.
-      # ============================================================
-      - name: Load configuration
-        run: |
-          cd lede
-
-          echo "========================================"
-          echo "        LOAD CUSTOM CONFIG"
-          echo "========================================"
-
-          cp ../configs/x86_64.config .config
-
-          echo
-          echo "========== INITIAL CONFIG =========="
-          cat .config
-
-          echo
-          echo "========================================"
-          echo "        RUN MAKE DEFCONFIG"
-          echo "========================================"
-
-          make defconfig
-
-          echo
-          echo "========================================"
-          echo "        FORCE SSL CONFIG"
-          echo "========================================"
-
-          # --------------------------------------------------------
-          # LuCI SSL
-          #
-          # 禁止 luci-ssl 默认的 mbedTLS 后端
-          # 使用 luci-ssl-openssl
-          # --------------------------------------------------------
-
-          sed -i '/^CONFIG_PACKAGE_luci-ssl=/d' .config
-          sed -i '/^# CONFIG_PACKAGE_luci-ssl is not set/d' .config
-
-          sed -i '/^CONFIG_PACKAGE_luci-ssl-openssl=/d' .config
-          sed -i '/^# CONFIG_PACKAGE_luci-ssl-openssl is not set/d' .config
-
-          echo 'CONFIG_PACKAGE_luci-ssl-openssl=y' >> .config
-
-          # --------------------------------------------------------
-          # libustream
-          #
-          # SSR Plus 使用 OpenSSL
-          # 禁止 mbedTLS backend
-          # --------------------------------------------------------
-
-          sed -i '/^CONFIG_PACKAGE_libustream-openssl=/d' .config
-          sed -i '/^# CONFIG_PACKAGE_libustream-openssl is not set/d' .config
-
-          sed -i '/^CONFIG_PACKAGE_libustream-mbedtls=/d' .config
-          sed -i '/^# CONFIG_PACKAGE_libustream-mbedtls is not set/d' .config
-
-          echo 'CONFIG_PACKAGE_libustream-openssl=y' >> .config
-          echo '# CONFIG_PACKAGE_libustream-mbedtls is not set' >> .config
-
-          # --------------------------------------------------------
-          # cshark
-          #
-          # cshark / luci-app-cshark 使用 mbedTLS
-          # 与 SSR Plus + OpenSSL 冲突
-          # --------------------------------------------------------
-
-          sed -i '/^CONFIG_PACKAGE_cshark=/d' .config
-          sed -i '/^# CONFIG_PACKAGE_cshark is not set/d' .config
-
-          sed -i '/^CONFIG_PACKAGE_luci-app-cshark=/d' .config
-          sed -i '/^# CONFIG_PACKAGE_luci-app-cshark is not set/d' .config
-
-          echo '# CONFIG_PACKAGE_cshark is not set' >> .config
-          echo '# CONFIG_PACKAGE_luci-app-cshark is not set' >> .config
-
-          echo
-          echo "========================================"
-          echo "        FORCE INTEL WIFI CONFIG"
-          echo "========================================"
-
-          # --------------------------------------------------------
-          # Intel WiFi Link 5100
-          # PCI ID:
-          # 8086:4232
-          # --------------------------------------------------------
-
-          # cfg80211
-          sed -i '/^CONFIG_PACKAGE_kmod-cfg80211=/d' .config
-          sed -i '/^# CONFIG_PACKAGE_kmod-cfg80211 is not set/d' .config
-          echo 'CONFIG_PACKAGE_kmod-cfg80211=y' >> .config
-
-          # mac80211
-          sed -i '/^CONFIG_PACKAGE_kmod-mac80211=/d' .config
-          sed -i '/^# CONFIG_PACKAGE_kmod-mac80211 is not set/d' .config
-          echo 'CONFIG_PACKAGE_kmod-mac80211=y' >> .config
-
-          # iwlwifi
-          sed -i '/^CONFIG_PACKAGE_kmod-iwlwifi=/d' .config
-          sed -i '/^# CONFIG_PACKAGE_kmod-iwlwifi is not set/d' .config
-          echo 'CONFIG_PACKAGE_kmod-iwlwifi=y' >> .config
-
-          # Intel 5000 series firmware
-          sed -i '/^CONFIG_PACKAGE_iwlwifi-firmware-iwl5000=/d' .config
-          sed -i '/^# CONFIG_PACKAGE_iwlwifi-firmware-iwl5000 is not set/d' .config
-          echo 'CONFIG_PACKAGE_iwlwifi-firmware-iwl5000=y' >> .config
-
-          # iw
-          sed -i '/^CONFIG_PACKAGE_iw=/d' .config
-          sed -i '/^# CONFIG_PACKAGE_iw is not set/d' .config
-          echo 'CONFIG_PACKAGE_iw=y' >> .config
-
-          # iwinfo
-          sed -i '/^CONFIG_PACKAGE_iwinfo=/d' .config
-          sed -i '/^# CONFIG_PACKAGE_iwinfo is not set/d' .config
-          echo 'CONFIG_PACKAGE_iwinfo=y' >> .config
-
-          # wireless-regdb
-          sed -i '/^CONFIG_PACKAGE_wireless-regdb=/d' .config
-          sed -i '/^# CONFIG_PACKAGE_wireless-regdb is not set/d' .config
-          echo 'CONFIG_PACKAGE_wireless-regdb=y' >> .config
-
-          echo
-          echo "========================================"
-          echo "        FINAL CONFIG CHECK"
-          echo "========================================"
-
-          echo
-          echo "----- TARGET -----"
-          grep -E \
-            'CONFIG_TARGET_x86|CONFIG_TARGET_x86_64' \
-            .config || true
-
-          echo
-          echo "----- LUCI / SSL -----"
-          grep -E \
-            'CONFIG_PACKAGE_luci($|-ssl)|CONFIG_PACKAGE_libustream-' \
-            .config || true
-
-          echo
-          echo "----- CSHARK -----"
-          grep -E \
-            'CONFIG_PACKAGE_(cshark|luci-app-cshark)' \
-            .config || true
-
-          echo
-          echo "----- INTEL WIFI -----"
-          grep -E \
-            'CONFIG_PACKAGE_(kmod-cfg80211|kmod-mac80211|kmod-iwlwifi|iwlwifi-firmware-iwl5000|iw|iwinfo|wireless-regdb)' \
-            .config || true
-
-          echo
-          echo "========================================"
-          echo "        CONFIG COMPLETE"
-          echo "========================================"
-
-      # ============================================================
-      # 9. Verify configuration
-      # ============================================================
-      - name: Verify configuration
-        run: |
-          cd lede
-
-          echo "========================================"
-          echo "        VERIFY CONFIGURATION"
-          echo "========================================"
-
-          echo
-          echo "========== SSL =========="
-
-          if grep -q '^CONFIG_PACKAGE_luci-ssl-openssl=y' .config; then
-            echo "OK: luci-ssl-openssl"
-          else
-            echo "ERROR: luci-ssl-openssl missing"
-            exit 1
-          fi
-
-          if grep -q '^CONFIG_PACKAGE_libustream-openssl=y' .config; then
-            echo "OK: libustream-openssl"
-          else
-            echo "ERROR: libustream-openssl missing"
-            exit 1
-          fi
-
-          if grep -q '^CONFIG_PACKAGE_libustream-mbedtls=y' .config; then
-            echo "ERROR: libustream-mbedtls is enabled"
-            exit 1
-          else
-            echo "OK: libustream-mbedtls disabled"
-          fi
-
-          echo
-          echo "========== CSHARK =========="
-
-          if grep -q '^CONFIG_PACKAGE_cshark=y' .config; then
-            echo "ERROR: cshark is enabled"
-            exit 1
-          else
-            echo "OK: cshark disabled"
-          fi
-
-          if grep -q '^CONFIG_PACKAGE_luci-app-cshark=y' .config; then
-            echo "ERROR: luci-app-cshark is enabled"
-            exit 1
-          else
-            echo "OK: luci-app-cshark disabled"
-          fi
-
-          echo
-          echo "========== INTEL WIFI =========="
-
-          grep -E \
-            'CONFIG_PACKAGE_(kmod-cfg80211|kmod-mac80211|kmod-iwlwifi|iwlwifi-firmware-iwl5000|iw|iwinfo|wireless-regdb)' \
-            .config || true
-
-          echo
-          echo "========================================"
-          echo "        CONFIG VERIFIED"
-          echo "========================================"
-
-      # ============================================================
-      # 10. Download source packages
-      # ============================================================
-      - name: Download packages
-        run: |
-          cd lede
-
-          echo "========================================"
-          echo "        DOWNLOAD PACKAGES"
-          echo "========================================"
-
-          make download -j2 V=s
-
-      # ============================================================
-      # 11. Build
-      # ============================================================
-      - name: Build firmware
-        run: |
-          cd lede
-
-          echo "========================================"
-          echo "        START OPENWRT BUILD"
-          echo "========================================"
-
-          echo
-          echo "========== DISK =========="
-          df -h
-
-          echo
-          echo "========== MEMORY =========="
-          free -h
-
-          echo
-          echo "========== CPU =========="
-          nproc
-
-          echo
-          echo "========== BUILD =========="
-
-          make V=s -j2
-
-      # ============================================================
-      # 12. Check build result
-      # ============================================================
-      - name: Check build result
-        if: success()
-        run: |
-          cd lede
-
-          echo "========================================"
-          echo "        BUILD RESULT"
-          echo "========================================"
-
-          echo
-          echo "========== TARGET FILES =========="
-
-          find bin/targets/x86/64/ \
-            -maxdepth 2 \
-            -type f \
-            -printf '%p %k KB\n' \
-            2>/dev/null | sort || true
-
-          echo
-          echo "========== PACKAGE FILES =========="
-
-          find bin/packages/x86_64/ \
-            -type f \
-            2>/dev/null | head -100 || true
-
-          echo
-          echo "========== DISK =========="
-          du -sh bin/targets/x86/64/ 2>/dev/null || true
-          df -h
-
-      # ============================================================
-      # 13. Upload firmware
-      # ============================================================
-      - name: Upload firmware
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: openwrt-x86-64
-          path: |
-            lede/bin/targets/x86/64/**
-            lede/bin/packages/x86_64/**
-          if-no-files-found: error
-          retention-days: 7
+
+    ##################################################
+    # Checkout
+    ##################################################
+
+    - name: Checkout
+      uses: actions/checkout@v4
+
+
+
+    ##################################################
+    # Free space
+    ##################################################
+
+    - name: Free disk
+      run: |
+
+        df -h
+
+        sudo rm -rf /usr/local/lib/android || true
+        sudo rm -rf /usr/share/dotnet || true
+        sudo rm -rf /opt/ghc || true
+
+        sudo docker system prune -af || true
+
+        df -h
+
+
+
+    ##################################################
+    # Dependencies
+    ##################################################
+
+    - name: Install dependencies
+
+      run: |
+
+        sudo apt update
+
+
+        sudo apt install -y \
+        build-essential \
+        clang \
+        flex \
+        bison \
+        gawk \
+        gettext \
+        git \
+        libncurses-dev \
+        libssl-dev \
+        python3 \
+        python3-pip \
+        python3-pyelftools \
+        rsync \
+        unzip \
+        wget \
+        zstd \
+        file \
+        ccache
+
+
+
+    ##################################################
+    # Clone OpenWrt 25.12
+    ##################################################
+
+    - name: Clone OpenWrt
+
+      run: |
+
+
+        git clone \
+        --depth=1 \
+        --branch=openwrt-25.12 \
+        https://github.com/openwrt/openwrt.git \
+        openwrt
+
+
+
+    ##################################################
+    # Feeds
+    ##################################################
+
+    - name: Update feeds
+
+      run: |
+
+        cd openwrt
+
+
+        ./scripts/feeds update -a
+
+        ./scripts/feeds install -a
+
+
+
+    ##################################################
+    # Custom config
+    ##################################################
+
+    - name: Configure OpenWrt
+
+      run: |
+
+        cd openwrt
+
+
+        cat > .config <<'EOF'
+
+
+CONFIG_TARGET_x86=y
+CONFIG_TARGET_x86_64=y
+CONFIG_TARGET_x86_64_DEVICE_generic=y
+
+
+#
+# LuCI
+#
+
+CONFIG_PACKAGE_luci=y
+CONFIG_PACKAGE_luci-ssl=y
+
+
+
+#
+# Wireless
+#
+
+CONFIG_PACKAGE_kmod-cfg80211=y
+CONFIG_PACKAGE_kmod-mac80211=y
+
+CONFIG_PACKAGE_kmod-iwlwifi=y
+
+
+#
+# Intel firmware
+#
+
+CONFIG_PACKAGE_iwlwifi-firmware-iwl5000=y
+
+
+#
+# Wireless tools
+#
+
+CONFIG_PACKAGE_iw=y
+CONFIG_PACKAGE_iwinfo=y
+CONFIG_PACKAGE_wireless-regdb=y
+
+
+
+#
+# Kernel modules
+#
+
+CONFIG_PACKAGE_kmod-usb-core=y
+
+
+#
+# Filesystem
+#
+
+CONFIG_TARGET_ROOTFS_EXT4FS=y
+
+
+EOF
+
+
+
+        make defconfig
+
+
+
+        echo "===== Wireless check ====="
+
+        grep -E \
+        "iwlwifi|mac80211|cfg80211|iwinfo|wireless-regdb" \
+        .config || true
+
+
+
+    ##################################################
+    # Download
+    ##################################################
+
+    - name: Download
+
+      run: |
+
+        cd openwrt
+
+        make download -j4
+
+
+
+    ##################################################
+    # Build
+    ##################################################
+
+    - name: Build
+
+      run: |
+
+        cd openwrt
+
+
+        make -j2 V=s
+
+
+
+    ##################################################
+    # Check firmware
+    ##################################################
+
+    - name: Check output
+
+      run: |
+
+        cd openwrt
+
+
+        echo "===== Images ====="
+
+
+        find bin/targets/x86/64 \
+        -type f
+
+
+
+        echo
+
+        echo "===== Wireless packages ====="
+
+
+        find bin/packages \
+        | grep -E \
+        "iwlwifi|mac80211|cfg80211|wireless-regdb" \
+        || true
+
+
+
+    ##################################################
+    # Artifact
+    ##################################################
+
+    - name: Upload Artifact
+
+      uses: actions/upload-artifact@v4
+
+      with:
+
+        name: openwrt-x86-64-wifi
+
+        path:
+
+          openwrt/bin/targets/x86/64/
+
+        retention-days: 7
+
+
+
+
+    ##################################################
+    # Release
+    ##################################################
+
+    - name: Create Release
+
+      if: success()
+
+      uses: softprops/action-gh-release@v2
+
+
+      with:
+
+        tag_name: openwrt-${{ github.run_number }}
+
+        name: OpenWrt x86_64 WiFi Build ${{ github.run_number }}
+
+
+        files: |
+
+          openwrt/bin/targets/x86/64/*
+
+      env:
+
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
