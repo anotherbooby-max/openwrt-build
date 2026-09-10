@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 360
 
     steps:
@@ -17,16 +17,20 @@ jobs:
       # 1. Checkout
       # ========================================
       - name: Checkout build repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
 
       # ========================================
       # 2. Free disk space
       # ========================================
       - name: Free disk space
         run: |
-          echo "========== Disk before cleanup =========="
+          echo "========================================"
+          echo "        DISK BEFORE CLEANUP"
+          echo "========================================"
           df -h
+          df -i
 
+          echo
           echo "========== Remove large preinstalled SDKs =========="
 
           sudo rm -rf /usr/local/lib/android || true
@@ -34,21 +38,33 @@ jobs:
           sudo rm -rf /opt/ghc || true
           sudo rm -rf /usr/local/share/powershell || true
           sudo rm -rf /usr/local/share/chromium || true
+          sudo rm -rf /usr/local/lib/node_modules || true
+          sudo rm -rf /opt/hostedtoolcache/CodeQL || true
 
+          echo
+          echo "========== Clean Docker =========="
+          sudo docker system prune -af || true
+
+          echo
+          echo "========== Clean APT =========="
           sudo apt-get clean || true
           sudo rm -rf /var/lib/apt/lists/* || true
 
-          echo "========== Disk after cleanup =========="
+          echo
+          echo "========================================"
+          echo "        DISK AFTER CLEANUP"
+          echo "========================================"
           df -h
+          df -i
 
       # ========================================
       # 3. Install dependencies
       # ========================================
       - name: Install dependencies
         run: |
-          sudo apt update
+          sudo apt-get update
 
-          sudo apt install -y \
+          sudo apt-get install -y \
             ack \
             antlr3 \
             asciidoc \
@@ -110,7 +126,6 @@ jobs:
             swig \
             texinfo \
             uglifyjs \
-            upx-ucl \
             unzip \
             vim \
             wget \
@@ -118,11 +133,15 @@ jobs:
             xxd \
             zlib1g-dev
 
+          echo
           echo "========== Clean APT cache =========="
           sudo apt-get clean
           sudo rm -rf /var/lib/apt/lists/*
 
-          echo "========== Disk after dependencies =========="
+          echo
+          echo "========================================"
+          echo "        DISK AFTER DEPENDENCIES"
+          echo "========================================"
           df -h
 
       # ========================================
@@ -134,8 +153,21 @@ jobs:
             https://github.com/coolsnowwolf/lede.git \
             lede
 
-          echo "========== LEDE cloned =========="
-          du -sh lede
+          cd lede
+
+          echo "========================================"
+          echo "        LEDE INFORMATION"
+          echo "========================================"
+
+          git log -1 --oneline
+          git remote -v
+
+          echo
+          echo "LEDE directory size:"
+          du -sh .
+
+          echo
+          echo "Disk:"
           df -h
 
       # ========================================
@@ -145,11 +177,16 @@ jobs:
         run: |
           cd lede
 
+          echo "========================================"
+          echo "        ADD KENZOK8 PACKAGES"
+          echo "========================================"
+
           echo 'src-git kenzo https://github.com/kenzok8/openwrt-packages' \
             >> feeds.conf.default
 
+          echo
           echo "========== feeds.conf.default =========="
-          tail -n 10 feeds.conf.default
+          tail -n 15 feeds.conf.default
 
       # ========================================
       # 6. Update feeds
@@ -158,11 +195,26 @@ jobs:
         run: |
           cd lede
 
+          echo "========================================"
+          echo "        UPDATE FEEDS"
+          echo "========================================"
+
           ./scripts/feeds update -a
+
+          echo
+          echo "========================================"
+          echo "        INSTALL FEEDS"
+          echo "========================================"
+
           ./scripts/feeds install -a
 
-          echo "========== Disk after feeds =========="
+          echo
+          echo "========================================"
+          echo "        DISK AFTER FEEDS"
+          echo "========================================"
+
           df -h
+          df -i
 
       # ========================================
       # 7. Load configuration
@@ -171,16 +223,40 @@ jobs:
         run: |
           cd lede
 
+          echo "========================================"
+          echo "        LOAD CUSTOM CONFIG"
+          echo "========================================"
+
           cp ../configs/x86_64.config .config
 
+          echo
           echo "========== Custom config =========="
           cat ../configs/x86_64.config
 
+          echo
+          echo "========================================"
+          echo "        RUN MAKE DEFCONFIG"
+          echo "========================================"
+
           make defconfig
 
-          echo "========== Final config check =========="
+          echo
+          echo "========================================"
+          echo "        FINAL CONFIG CHECK"
+          echo "========================================"
+
           grep -E \
             'CONFIG_TARGET_x86|CONFIG_PACKAGE_luci|CONFIG_PACKAGE_kmod-(cfg80211|mac80211)' \
+            .config || true
+
+          echo
+          echo "========== Target =========="
+          grep '^CONFIG_TARGET_' .config | head -30 || true
+
+          echo
+          echo "========== Wireless =========="
+          grep -E \
+            'CONFIG_PACKAGE_(kmod-cfg80211|kmod-mac80211|iw|iwinfo|wireless-regdb)' \
             .config || true
 
       # ========================================
@@ -190,13 +266,21 @@ jobs:
         run: |
           cd lede
 
+          echo "========================================"
+          echo "        DOWNLOAD SOURCES"
+          echo "========================================"
+
+          echo
           echo "========== Disk before download =========="
           df -h
+          df -i
 
-          make download -j2
+          make download -j2 V=s
 
+          echo
           echo "========== Disk after download =========="
           df -h
+          df -i
 
       # ========================================
       # 9. Build OpenWrt
@@ -209,20 +293,43 @@ jobs:
           echo "        START OPENWRT BUILD"
           echo "========================================"
 
+          echo
           echo "========== Disk before build =========="
           df -h
 
+          echo
+          echo "========== Inode =========="
+          df -i
+
+          echo
           echo "========== Memory =========="
           free -h
 
+          echo
           echo "========== CPU =========="
           nproc
 
+          echo
           echo "========== Build =========="
+
           make V=s -j2
 
+          echo
+          echo "========================================"
+          echo "        BUILD FINISHED"
+          echo "========================================"
+
+          echo
           echo "========== Disk after build =========="
           df -h
+
+          echo
+          echo "========== Output =========="
+          find bin/targets/x86/64 \
+            -maxdepth 2 \
+            -type f \
+            -printf '%p\t%k KB\n' \
+            | sort || true
 
       # ========================================
       # 10. Show build files
@@ -236,6 +343,9 @@ jobs:
           echo "        BUILD OUTPUT"
           echo "========================================"
 
+          echo
+          echo "========== Files =========="
+
           find bin/targets/x86/64 \
             -maxdepth 2 \
             -type f \
@@ -244,7 +354,24 @@ jobs:
 
           echo
           echo "========== Output directory size =========="
+
           du -sh bin/targets/x86/64
+
+          echo
+          echo "========== Firmware images =========="
+
+          find bin/targets/x86/64 \
+            -type f \
+            \( \
+              -name '*.img' \
+              -o -name '*.img.gz' \
+              -o -name '*.vmdk' \
+              -o -name '*.vdi' \
+              -o -name '*.qcow2' \
+              -o -name '*.tar.gz' \
+              -o -name '*.bin' \
+            \) \
+            -print
 
       # ========================================
       # 11. Upload firmware artifact
@@ -256,9 +383,25 @@ jobs:
           name: openwrt-x86-64
           path: lede/bin/targets/x86/64/
           if-no-files-found: error
+          retention-days: 7
 
       # ========================================
-      # 12. Build failure diagnostics
+      # 12. Upload build configuration
+      # ========================================
+      - name: Upload build configuration
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: openwrt-build-config
+          path: |
+            lede/.config
+            configs/x86_64.config
+            lede/feeds.conf.default
+          if-no-files-found: warn
+          retention-days: 7
+
+      # ========================================
+      # 13. Build failure diagnostics
       # ========================================
       - name: Build failure diagnostics
         if: failure()
@@ -267,6 +410,7 @@ jobs:
           echo "        BUILD FAILED"
           echo "========================================"
 
+          echo
           echo "========== Disk =========="
           df -h
 
@@ -279,11 +423,52 @@ jobs:
           free -h
 
           echo
+          echo "========== CPU =========="
+          nproc
+
+          echo
           echo "========== LEDE size =========="
           du -sh lede 2>/dev/null || true
 
           echo
+          echo "========== Build directory size =========="
+          du -sh lede/build_dir 2>/dev/null || true
+
+          echo
+          echo "========== Staging directory size =========="
+          du -sh lede/staging_dir 2>/dev/null || true
+
+          echo
+          echo "========== Bin directory size =========="
+          du -sh lede/bin 2>/dev/null || true
+
+          echo
           echo "========== Largest LEDE directories =========="
+
           du -xh lede --max-depth=2 2>/dev/null \
             | sort -h \
-            | tail -n 30 || true
+            | tail -n 50 || true
+
+          echo
+          echo "========== Last build log information =========="
+
+          find lede/logs \
+            -type f \
+            -maxdepth 2 \
+            -print 2>/dev/null \
+            | sort || true
+
+      # ========================================
+      # 14. Upload failure diagnostics
+      # ========================================
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: openwrt-build-diagnostics
+          path: |
+            lede/.config
+            lede/feeds.conf.default
+            lede/logs/
+          if-no-files-found: warn
+          retention-days: 7
