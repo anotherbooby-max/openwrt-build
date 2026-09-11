@@ -92,9 +92,7 @@ jobs:
         cd lede
 
 
-        echo '
-src-git kenzo https://github.com/kenzok8/openwrt-packages.git
-' >> feeds.conf.default
+        echo 'src-git kenzo https://github.com/kenzok8/openwrt-packages.git' >> feeds.conf.default
 
 
 
