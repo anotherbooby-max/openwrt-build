@@ -1,9 +1,7 @@
-name: Build OpenWrt 18.06.9 Intel5100 AP
-
+name: Build OpenWrt 18.06.9 Intel5100
 
 on:
   workflow_dispatch:
-
 
 permissions:
   contents: write
@@ -21,83 +19,67 @@ jobs:
     steps:
 
 
-    ########################################
-    # checkout
-    ########################################
-
+    # ==========================
+    # Checkout
+    # ==========================
     - name: Checkout
       uses: actions/checkout@v4
 
 
 
-    ########################################
-    # clean disk
-    ########################################
-
-    - name: Free disk
-      run: |
-
-        sudo rm -rf /usr/local/lib/android || true
-        sudo rm -rf /usr/share/dotnet || true
-        sudo rm -rf /opt/ghc || true
-
-        df -h
-
-
-
-    ########################################
-    # install build tools
-    ########################################
-
+    # ==========================
+    # Install dependencies
+    # ==========================
     - name: Install dependencies
-
       run: |
 
-        sudo apt-get update
+        sudo apt update
 
 
-        sudo apt-get install -y \
+        sudo apt install -y \
           build-essential \
-          clang \
+          gcc \
+          g++ \
+          make \
+          git \
+          wget \
+          curl \
+          unzip \
+          file \
+          rsync \
+          subversion \
+          gettext \
+          libncurses5-dev \
+          libncursesw5-dev \
+          zlib1g-dev \
+          libssl-dev \
+          python2 \
+          python2-dev \
+          python3 \
+          python3-distutils \
+          gawk \
           flex \
           bison \
-          g++ \
-          gawk \
-          gcc-multilib \
-          gettext \
-          git \
-          libncurses5-dev \
-          libssl-dev \
-          python3 \
-          python-is-python3 \
-          python3-setuptools \
-          rsync \
-          unzip \
-          wget \
-          zlib1g-dev \
-          file \
-          ccache \
-          bc \
-          quilt \
-          xsltproc \
-          asciidoc \
-          help2man \
-          intltool \
-          xmlto \
-          squashfs-tools
+          patch \
+          perl
 
+
+        echo "========== Python =========="
+
+        python2 --version
+
+
+        sudo ln -sf /usr/bin/python2 /usr/bin/python
 
 
         python --version
 
 
 
-    ########################################
-    # clone openwrt 18.06.9
-    ########################################
-
+    # ==========================
+    # Clone OpenWrt
+    # ==========================
     - name: Clone OpenWrt 18.06.9
-
       run: |
 
         git clone \
@@ -109,16 +91,14 @@ jobs:
 
         cd openwrt
 
-        git log -1
+        git checkout v18.06.9
 
 
 
-    ########################################
-    # feeds
-    ########################################
-
+    # ==========================
+    # Add wireless packages
+    # ==========================
     - name: Update feeds
-
       run: |
 
         cd openwrt
@@ -131,12 +111,10 @@ jobs:
 
 
 
-    ########################################
-    # config
-    ########################################
-
+    # ==========================
+    # Load config
+    # ==========================
     - name: Load config
-
       run: |
 
         cd openwrt
@@ -148,22 +126,18 @@ jobs:
         make defconfig
 
 
-
-        echo "===== wireless ====="
-
+        echo "====== Wireless ======"
 
         grep -E \
-        "iwl|mac80211|cfg80211|hostapd|wpad" \
+        "iwlwifi|mac80211|cfg80211|wireless-regdb" \
         .config || true
 
 
 
-    ########################################
-    # download
-    ########################################
-
+    # ==========================
+    # Download
+    # ==========================
     - name: Download
-
       run: |
 
         cd openwrt
@@ -173,12 +147,10 @@ jobs:
 
 
 
-    ########################################
-    # compile
-    ########################################
-
+    # ==========================
+    # Build
+    # ==========================
     - name: Build
-
       run: |
 
         cd openwrt
@@ -188,35 +160,41 @@ jobs:
 
 
 
-    ########################################
-    # show files
-    ########################################
-
-    - name: Show output
-
-      run: |
-
-        cd openwrt
-
-
-        ls -lah bin/targets/x86/64
-
-
-
-    ########################################
-    # upload firmware
-    ########################################
-
+    # ==========================
+    # Upload
+    # ==========================
     - name: Upload firmware
-
+      if: success()
       uses: actions/upload-artifact@v4
 
       with:
 
-        name: openwrt-18.06.9-x86-64-intel5100
+        name: openwrt-18.06.9-x86-64
 
         path:
 
           openwrt/bin/targets/x86/64/
 
+
         retention-days: 7
+
+
+
+    # ==========================
+    # Release
+    # ==========================
+    - name: Create Release
+
+      if: success()
+
+      uses: softprops/action-gh-release@v2
+
+      with:
+
+        tag_name: openwrt-18.06.9-intel5100
+
+        name: OpenWrt 18.06.9 Intel5100 AP
+
+        files:
+
+          openwrt/bin/targets/x86/64/*
