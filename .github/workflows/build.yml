@@ -1,4 +1,5 @@
-name: Build OpenWrt 18.06.9 x86_64
+name: Build LEDE 19.07 x86_64
+
 
 on:
   workflow_dispatch:
@@ -12,7 +13,7 @@ jobs:
 
   build:
 
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-20.04
 
     timeout-minutes: 360
 
@@ -20,50 +21,22 @@ jobs:
     steps:
 
 
-    ########################################
-    # Checkout
-    ########################################
-
     - name: Checkout
+
       uses: actions/checkout@v4
 
 
 
-    ########################################
-    # Free disk
-    ########################################
-
-    - name: Free disk space
-      run: |
-
-        sudo rm -rf /usr/local/lib/android
-        sudo rm -rf /usr/share/dotnet
-        sudo rm -rf /opt/ghc
-        sudo rm -rf /usr/local/share/powershell
-
-        sudo docker system prune -af
-
-        df -h
-
-
-
-    ########################################
-    # Install dependencies
-    ########################################
-
-    - name: Install build packages
+    - name: Install dependencies
 
       run: |
 
         sudo apt update
 
-
         sudo apt install -y \
           build-essential \
           gcc \
           g++ \
-          make \
-          cmake \
           git \
           wget \
           curl \
@@ -71,7 +44,6 @@ jobs:
           file \
           rsync \
           python2 \
-          python2-dev \
           libncurses5-dev \
           libncursesw5-dev \
           zlib1g-dev \
@@ -86,62 +58,71 @@ jobs:
           tar \
           cpio \
           bc \
-          gawk \
-          subversion
+          gawk
 
 
 
-    ########################################
-    # Clone OpenWrt 18.06.9
-    ########################################
+    ################################
+    # Clone LEDE
+    ################################
 
-    - name: Clone OpenWrt 18.06.9
+    - name: Clone LEDE
 
-      run: |
+
+      run:
 
         git clone \
           --depth=1 \
-          -b openwrt-18.06.9 \
-          https://github.com/openwrt/openwrt.git \
-          openwrt
-
-
-        cd openwrt
-
-
-        git log -1
+          -b openwrt-19.07 \
+          https://github.com/coolsnowwolf/lede.git \
+          lede
 
 
 
-    ########################################
-    # Update feeds
-    ########################################
+    ################################
+    # Add packages
+    ################################
+
+
+    - name: Add feeds
+
+
+      run:
+
+        cd lede
+
+
+        echo '
+src-git kenzo https://github.com/kenzok8/openwrt-packages.git
+' >> feeds.conf.default
+
+
+
+    ################################
+
 
     - name: Update feeds
 
-      run: |
 
-        cd openwrt
+      run:
+
+        cd lede
 
 
         ./scripts/feeds update -a
-
 
         ./scripts/feeds install -a
 
 
 
-    ########################################
-    # Load config
-    ########################################
+    ################################
 
     - name: Load config
 
 
-      run: |
+      run:
 
-
-        cd openwrt
+        cd lede
 
 
         cp ../configs/x86_64.config .config
@@ -151,79 +132,40 @@ jobs:
 
 
 
-        echo "========= Wireless Config ========="
+    ################################
 
-
-        grep -E \
-        "iwlwifi|iwldvm|mac80211|cfg80211|hostapd|wpad" \
-        .config || true
-
-
-
-    ########################################
-    # Download source
-    ########################################
 
     - name: Download
 
 
-      run: |
+      run:
 
-        cd openwrt
+        cd lede
 
 
         make download -j4
 
 
 
-    ########################################
-    # Compile
-    ########################################
+    ################################
+
 
     - name: Build
 
 
-      run: |
+      run:
 
-        cd openwrt
+
+        cd lede
 
 
         make -j2 V=s
 
 
 
-    ########################################
-    # Check output
-    ########################################
+    ################################
 
-
-    - name: Show firmware
-
-
-      run: |
-
-
-        cd openwrt
-
-
-        ls -lh bin/targets/x86/64/
-
-
-        find bin/targets/x86/64 \
-        -type f \
-        \( \
-        -name "*.img*" \
-        -o -name "*.combined*" \
-        -o -name "*.vmdk" \
-        \)
-
-
-
-    ########################################
-    # Upload Artifact
-    ########################################
-
-    - name: Upload firmware
+    - name: Upload
 
 
       uses: actions/upload-artifact@v4
@@ -231,20 +173,17 @@ jobs:
 
       with:
 
-        name: OpenWrt-18.06.9-x86_64
+        name: lede-x86-64
 
         path:
 
-          openwrt/bin/targets/x86/64/
+          lede/bin/targets/x86/64/*
 
 
 
-    ########################################
-    # Create Release
-    ########################################
+    ################################
 
-
-    - name: Create Release
+    - name: Release
 
 
       if: success()
@@ -256,12 +195,16 @@ jobs:
       with:
 
 
-        tag_name: OpenWrt-18.06.9-${{ github.run_number }}
+        tag_name:
+
+          lede-19.07-${{github.run_number}}
 
 
-        name: OpenWrt 18.06.9 x86_64 Build
+        name:
+
+          LEDE 19.07 x86_64
 
 
         files:
 
-          openwrt/bin/targets/x86/64/*
+          lede/bin/targets/x86/64/*
