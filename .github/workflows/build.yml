@@ -1,4 +1,4 @@
-name: Build OpenWrt 18.06.9 x86_64
+name: Build OpenWrt 18.06.9 Intel5100 AP
 
 
 on:
@@ -21,71 +21,136 @@ jobs:
     steps:
 
 
+    ########################################
+    # checkout
+    ########################################
+
     - name: Checkout
       uses: actions/checkout@v4
 
 
 
-    - name: Install dependencies
+    ########################################
+    # clean disk
+    ########################################
+
+    - name: Free disk
       run: |
 
-        sudo apt update
+        sudo rm -rf /usr/local/lib/android || true
+        sudo rm -rf /usr/share/dotnet || true
+        sudo rm -rf /opt/ghc || true
 
-        sudo apt install -y \
+        df -h
+
+
+
+    ########################################
+    # install build tools
+    ########################################
+
+    - name: Install dependencies
+
+      run: |
+
+        sudo apt-get update
+
+
+        sudo apt-get install -y \
           build-essential \
-          gcc \
-          g++ \
+          clang \
           flex \
           bison \
+          g++ \
           gawk \
-          make \
+          gcc-multilib \
           gettext \
+          git \
           libncurses5-dev \
           libssl-dev \
-          python \
+          python3 \
+          python-is-python3 \
+          python3-setuptools \
+          rsync \
           unzip \
+          wget \
           zlib1g-dev \
           file \
-          wget \
-          git \
-          rsync
+          ccache \
+          bc \
+          quilt \
+          xsltproc \
+          asciidoc \
+          help2man \
+          intltool \
+          xmlto \
+          squashfs-tools
 
 
+
+        python --version
+
+
+
+    ########################################
+    # clone openwrt 18.06.9
+    ########################################
 
     - name: Clone OpenWrt 18.06.9
+
       run: |
 
         git clone \
         --depth=1 \
-        -b v18.06.9 \
+        -b openwrt-18.06 \
         https://github.com/openwrt/openwrt.git \
         openwrt
 
 
+        cd openwrt
+
+        git log -1
+
+
+
+    ########################################
+    # feeds
+    ########################################
 
     - name: Update feeds
+
       run: |
 
         cd openwrt
 
+
         ./scripts/feeds update -a
+
 
         ./scripts/feeds install -a
 
 
 
+    ########################################
+    # config
+    ########################################
+
     - name: Load config
+
       run: |
 
         cd openwrt
 
+
         cp ../configs/x86_64.config .config
+
 
         make defconfig
 
 
 
-        echo "===== Wireless config ====="
+        echo "===== wireless ====="
+
 
         grep -E \
         "iwl|mac80211|cfg80211|hostapd|wpad" \
@@ -93,44 +158,65 @@ jobs:
 
 
 
+    ########################################
+    # download
+    ########################################
+
     - name: Download
+
       run: |
 
         cd openwrt
 
-        make download -j2
+
+        make download -j4
 
 
+
+    ########################################
+    # compile
+    ########################################
 
     - name: Build
+
       run: |
 
         cd openwrt
 
-        make -j2 V=s
+
+        make V=s -j2
 
 
 
-    - name: Check firmware
+    ########################################
+    # show files
+    ########################################
+
+    - name: Show output
+
       run: |
 
         cd openwrt
 
-        echo "===== OUTPUT ====="
 
-        find bin/targets/x86
+        ls -lah bin/targets/x86/64
 
 
+
+    ########################################
+    # upload firmware
+    ########################################
 
     - name: Upload firmware
+
       uses: actions/upload-artifact@v4
 
       with:
 
-        name: OpenWrt-18.06.9-x86_64
+        name: openwrt-18.06.9-x86-64-intel5100
 
         path:
 
-          openwrt/bin/targets/x86/64/*
+          openwrt/bin/targets/x86/64/
 
-
+        retention-days: 7
