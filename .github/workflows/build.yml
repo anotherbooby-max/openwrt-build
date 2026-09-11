@@ -73,26 +73,28 @@ jobs:
 
 
         python --version
+        
+        
+        - name: Clone OpenWrt 18.06.9
+        run: |
 
+          echo "========================================"
+          echo " Clone OpenWrt 18.06.9 "
+          echo "========================================"
 
+          git clone \
+            --depth=1 \
+            --branch openwrt-18.06 \
+            https://github.com/openwrt/openwrt.git \
+            openwrt
 
-    # ==========================
-    # Clone OpenWrt
-    # ==========================
-    - name: Clone OpenWrt 18.06.9
-      run: |
+          cd openwrt
 
-        git clone \
-        --depth=1 \
-        -b openwrt-18.06 \
-        https://github.com/openwrt/openwrt.git \
-        openwrt
+          echo "Current branch:"
+          git branch
 
-
-        cd openwrt
-
-        git checkout v18.06.9
-
+          echo "Current commit:"
+          git log -1 --oneline
 
 
     # ==========================
