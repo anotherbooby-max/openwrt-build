@@ -44,14 +44,15 @@ jobs:
 
     - name: Clone LEDE
       run: |
-
-        git clone \
-        --depth=1 \
-        -b master \
-        https://github.com/coolsnowwolf/lede.git \
-        lede
-
-
+        
+        git clone --depth=1 https://github.com/coolsnowwolf/lede.git lede
+        cd lede
+        echo "========== LEDE branches =========="
+        git branch -a
+        echo "========== LEDE tags =========="
+        git tag --list | tail -50
+        echo "========== Current commit =========="
+        git log -1 --oneline
 
     - name: Update feeds
       run: |
