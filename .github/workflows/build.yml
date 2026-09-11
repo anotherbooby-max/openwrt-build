@@ -1,7 +1,8 @@
-name: Build OpenWrt 18.06.9 Intel5100
+name: Build OpenWrt x86_64 Intel5100
 
 on:
   workflow_dispatch:
+
 
 permissions:
   contents: write
@@ -19,17 +20,19 @@ jobs:
     steps:
 
 
-    # ==========================
+    # =====================
     # Checkout
-    # ==========================
+    # =====================
+
     - name: Checkout
       uses: actions/checkout@v4
 
 
 
-    # ==========================
+    # =====================
     # Install dependencies
-    # ==========================
+    # =====================
+
     - name: Install dependencies
       run: |
 
@@ -40,88 +43,68 @@ jobs:
           build-essential \
           gcc \
           g++ \
-          make \
           git \
+          make \
+          cmake \
+          unzip \
           wget \
           curl \
-          unzip \
-          file \
           rsync \
-          subversion \
+          python3 \
+          python3-pip \
+          python2 \
+          file \
+          gawk \
           gettext \
           libncurses5-dev \
           libncursesw5-dev \
           zlib1g-dev \
           libssl-dev \
-          python2 \
-          python2-dev \
-          python3 \
-          python3-distutils \
-          gawk \
+          patch \
+          perl \
+          tar \
+          bzip2 \
           flex \
           bison \
-          patch \
-          perl
-        
-        
-        - name: Install dependencies
-        run: |
-
-          sudo apt-get update
-
-          sudo apt-get install -y \
-            build-essential \
-            gcc \
-            g++ \
-            git \
-            make \
-            cmake \
-            ncurses-dev \
-            unzip \
-            wget \
-            curl \
-            rsync \
-            python2 \
-            python2-dev \
-            libncurses5-dev \
-            zlib1g-dev
-
-          echo
-          echo "========== Python =========="
-
-          python2 --version
-
-          sudo ln -sf /usr/bin/python2 /usr/bin/python
-
-          python --version
-        
-        
-        - name: Clone OpenWrt 18.06.9
-        run: |
-
-          echo "========================================"
-          echo " Clone OpenWrt 18.06.9 "
-          echo "========================================"
-
-          git clone \
-            --depth=1 \
-            --branch openwrt-18.06 \
-            https://github.com/openwrt/openwrt.git \
-            openwrt
-
-          cd openwrt
-
-          echo "Current branch:"
-          git branch
-
-          echo "Current commit:"
-          git log -1 --oneline
+          gettext-base
 
 
-    # ==========================
-    # Add wireless packages
-    # ==========================
+
+        echo "Dependency OK"
+
+
+
+    # =====================
+    # Clone OpenWrt
+    # =====================
+
+
+    - name: Clone OpenWrt 24.10.5
+
+      run: |
+
+
+        git clone \
+          --depth=1 \
+          --branch openwrt-24.10 \
+          https://github.com/openwrt/openwrt.git \
+          openwrt
+
+
+        cd openwrt
+
+
+        git log -1
+
+
+
+    # =====================
+    # Add feeds
+    # =====================
+
+
     - name: Update feeds
+
       run: |
 
         cd openwrt
@@ -134,11 +117,15 @@ jobs:
 
 
 
-    # ==========================
+    # =====================
     # Load config
-    # ==========================
+    # =====================
+
+
     - name: Load config
+
       run: |
+
 
         cd openwrt
 
@@ -149,18 +136,24 @@ jobs:
         make defconfig
 
 
-        echo "====== Wireless ======"
+
+        echo "===== Wireless ====="
+
 
         grep -E \
-        "iwlwifi|mac80211|cfg80211|wireless-regdb" \
+        "CONFIG_PACKAGE_(kmod-iwlwifi|kmod-mac80211|kmod-cfg80211|iwinfo|iw)" \
         .config || true
 
 
 
-    # ==========================
+
+    # =====================
     # Download
-    # ==========================
-    - name: Download
+    # =====================
+
+
+    - name: Download packages
+
       run: |
 
         cd openwrt
@@ -170,53 +163,75 @@ jobs:
 
 
 
-    # ==========================
+    # =====================
     # Build
-    # ==========================
+    # =====================
+
+
     - name: Build
+
       run: |
 
         cd openwrt
 
 
-        make V=s -j2
+        make -j2 V=s
 
 
 
-    # ==========================
-    # Upload
-    # ==========================
+    # =====================
+    # Check output
+    # =====================
+
+
+    - name: Show firmware
+
+      run: |
+
+
+        cd openwrt
+
+
+        ls -lh bin/targets/x86/64/
+
+
+
+
+
+    # =====================
+    # Upload artifact
+    # =====================
+
+
     - name: Upload firmware
-      if: success()
+
       uses: actions/upload-artifact@v4
 
       with:
 
-        name: openwrt-18.06.9-x86-64
+        name: openwrt-x86-intel5100
 
         path:
 
           openwrt/bin/targets/x86/64/
 
 
-        retention-days: 7
 
 
+    # =====================
+    # Create Release
+    # =====================
 
-    # ==========================
-    # Release
-    # ==========================
+
     - name: Create Release
-
-      if: success()
 
       uses: softprops/action-gh-release@v2
 
       with:
 
-        tag_name: openwrt-18.06.9-intel5100
+        tag_name: intel5100-build-${{ github.run_number }}
 
-        name: OpenWrt 18.06.9 Intel5100 AP
+        name: OpenWrt Intel5100 x86_64
 
         files:
 
