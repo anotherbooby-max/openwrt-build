@@ -62,17 +62,38 @@ jobs:
           bison \
           patch \
           perl
+        
+        
+        - name: Install dependencies
+        run: |
 
+          sudo apt-get update
 
-        echo "========== Python =========="
+          sudo apt-get install -y \
+            build-essential \
+            gcc \
+            g++ \
+            git \
+            make \
+            cmake \
+            ncurses-dev \
+            unzip \
+            wget \
+            curl \
+            rsync \
+            python2 \
+            python2-dev \
+            libncurses5-dev \
+            zlib1g-dev
 
-        python2 --version
+          echo
+          echo "========== Python =========="
 
+          python2 --version
 
-        sudo ln -sf /usr/bin/python2 /usr/bin/python
+          sudo ln -sf /usr/bin/python2 /usr/bin/python
 
-
-        python --version
+          python --version
         
         
         - name: Clone OpenWrt 18.06.9
