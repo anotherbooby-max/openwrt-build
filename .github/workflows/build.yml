@@ -1,7 +1,10 @@
-name: Build LEDE R22.3.13 x86_64
+name: Build LEDE x86_64
 
 on:
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
 
@@ -11,103 +14,309 @@ jobs:
 
     steps:
 
-    - name: Checkout
-      uses: actions/checkout@v4
+      # ==========================================================
+      # 1. Checkout 自己的 openwrt-build 仓库
+      # ==========================================================
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
 
-    - name: Install dependencies
-      run: |
-        sudo apt update
+      # ==========================================================
+      # 2. 安装编译依赖
+      # ==========================================================
 
-        sudo apt install -y \
-          build-essential \
-          clang \
-          flex \
-          bison \
-          gawk \
-          gettext \
-          git \
-          libncurses5-dev \
-          libssl-dev \
-          python3 \
-          python3-setuptools \
-          rsync \
-          unzip \
-          zlib1g-dev \
-          file
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
 
-
-    - name: Clone LEDE
-      run: |
-
-        git clone \
-          https://github.com/coolsnowwolf/lede.git \
-          lede
-
-        cd lede
-
-        echo "===== Tags ====="
-        git tag | grep R22 | tail -20
+          sudo apt-get install -y \
+            build-essential \
+            clang \
+            flex \
+            bison \
+            gawk \
+            gettext \
+            git \
+            libncurses5-dev \
+            libssl-dev \
+            python3 \
+            python3-setuptools \
+            rsync \
+            unzip \
+            zlib1g-dev \
+            file \
+            wget \
+            curl \
+            xsltproc \
+            subversion \
+            swig
 
 
-        # 使用 R22.3.13 对应提交
-        git checkout R22.3.13 || true
+      # ==========================================================
+      # 3. 检查自己的配置文件
+      # ==========================================================
+
+      - name: Check config
+        run: |
+
+          echo "=========================================="
+          echo "Repository"
+          echo "=========================================="
+
+          pwd
+
+          echo
+
+          find . -maxdepth 4 -type f | sort
+
+          echo
+
+          echo "=========================================="
+          echo "x86_64.config"
+          echo "=========================================="
+
+          test -f configs/x86_64.config
+
+          cat configs/x86_64.config
 
 
-        git log -1
+      # ==========================================================
+      # 4. Clone LEDE
+      # ==========================================================
+
+      - name: Clone LEDE
+        run: |
+
+          git clone \
+            --depth=1 \
+            https://github.com/coolsnowwolf/lede.git \
+            lede
+
+          cd lede
+
+          echo "=========================================="
+          echo "LEDE commit"
+          echo "=========================================="
+
+          git log -1 --oneline
 
 
-    - name: Add feeds
-      run: |
+      # ==========================================================
+      # 5. Update feeds
+      # ==========================================================
 
-        cd lede
+      - name: Update feeds
+        run: |
 
-        ./scripts/feeds update -a
+          cd lede
 
-        ./scripts/feeds install -a
+          ./scripts/feeds update -a
 
-
-
-    - name: Load config
-      run: |
-
-        cd lede
-
-        cp ../x86_64.config .config
-
-        make defconfig
+          ./scripts/feeds install -a
 
 
+      # ==========================================================
+      # 6. 导入配置
+      # ==========================================================
 
-    - name: Download
-      run: |
+      - name: Load x86_64 config
+        run: |
 
-        cd lede
+          cd lede
 
-        make download -j8
+          cp ../configs/x86_64.config .config
+
+          echo "=========================================="
+          echo "Before defconfig"
+          echo "=========================================="
+
+          grep "^CONFIG_TARGET_x86" .config || true
+
+          echo
+
+          make defconfig
+
+          echo
+
+          echo "=========================================="
+          echo "After defconfig"
+          echo "=========================================="
+
+          grep "^CONFIG_TARGET_x86" .config || true
+
+          echo
+
+          echo "=========================================="
+          echo "Wireless configuration"
+          echo "=========================================="
+
+          grep -E \
+            "kmod-iwlwifi|kmod-mac80211|kmod-cfg80211|iwlwifi-firmware|wpad|wireless-regdb" \
+            .config || true
 
 
-    - name: Build
-      run: |
+      # ==========================================================
+      # 7. 下载源码包
+      # ==========================================================
 
-        cd lede
+      - name: Download
+        run: |
 
-        make -j2 V=s
+          cd lede
 
-
-
-    - name: Show firmware
-      run: |
-
-        ls -lah lede/bin/targets/x86/64/
+          make download -j8
 
 
-    - name: Upload firmware
-      uses: actions/upload-artifact@v4
+      # ==========================================================
+      # 8. 编译
+      # ==========================================================
 
-      with:
+      - name: Build
+        run: |
 
-        name: lede-x86-64
+          cd lede
 
-        path: |
-          lede/bin/targets/x86/64/*
+          echo "=========================================="
+          echo "CPU"
+          echo "=========================================="
+
+          nproc
+
+          echo
+
+          echo "=========================================="
+          echo "Start build"
+          echo "=========================================="
+
+          make -j2 V=s
+
+
+      # ==========================================================
+      # 9. 显示固件
+      # ==========================================================
+
+      - name: Show firmware
+        run: |
+
+          echo "=========================================="
+          echo "Firmware"
+          echo "=========================================="
+
+          find lede/bin/targets/x86/64 \
+            -maxdepth 2 \
+            -type f \
+            -printf "%p\n" \
+            | sort
+
+
+      # ==========================================================
+      # 10. 创建 Release 文件目录
+      # ==========================================================
+
+      - name: Prepare release
+        run: |
+
+          rm -rf release
+
+          mkdir -p release
+
+          cp -av \
+            lede/bin/targets/x86/64/* \
+            release/
+
+          echo
+
+          echo "=========================================="
+          echo "Release files"
+          echo "=========================================="
+
+          ls -lah release
+
+
+      # ==========================================================
+      # 11. 上传 Actions Artifact
+      # ==========================================================
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+
+        with:
+          name: LEDE-x86_64
+
+          path: release/
+
+          if-no-files-found: error
+
+
+      # ==========================================================
+      # 12. 创建 GitHub Release
+      # ==========================================================
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+        run: |
+
+          TAG="lede-x86_64-${GITHUB_RUN_NUMBER}"
+
+          TITLE="LEDE x86_64 Build ${GITHUB_RUN_NUMBER}"
+
+          echo "=========================================="
+          echo "Release"
+          echo "=========================================="
+
+          echo "TAG:"
+          echo "$TAG"
+
+          echo "TITLE:"
+          echo "$TITLE"
+
+
+          gh release create "$TAG" \
+            release/* \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "$TITLE" \
+            --notes "LEDE x86_64 firmware
+
+Source:
+coolsnowwolf/lede
+
+Architecture:
+x86_64
+
+Build:
+GitHub Actions
+
+Run:
+${GITHUB_RUN_NUMBER}
+
+Commit:
+${GITHUB_SHA}
+"
+
+
+      # ==========================================================
+      # 13. 完成
+      # ==========================================================
+
+      - name: Build complete
+        run: |
+
+          echo "=========================================="
+          echo "BUILD COMPLETE"
+          echo "=========================================="
+
+          echo "Repository:"
+          echo "${GITHUB_REPOSITORY}"
+
+          echo
+
+          echo "Release:"
+          echo "lede-x86_64-${GITHUB_RUN_NUMBER}"
+
+          echo
+
+          echo "Open Releases:"
+          echo "https://github.com/${GITHUB_REPOSITORY}/releases"
