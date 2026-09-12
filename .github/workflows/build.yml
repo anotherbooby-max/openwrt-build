@@ -8,25 +8,18 @@ permissions:
 
 env:
   SOURCE_REPO: https://github.com/coolsnowwolf/lede.git
-
-  # 使用 LEDE 的正式 Tag
-  SOURCE_COMMIT: 3516c9a
-
   KENZO_REPO: https://github.com/kenzok8/openwrt-packages.git
   SMALL_REPO: https://github.com/kenzok8/small.git
-
   TARGET: x86_64
 
 jobs:
-
   build:
-    name: Build LEDE x86_64
     runs-on: ubuntu-22.04
 
     steps:
 
       # ==========================================================
-      # 1. 检出自己的仓库
+      # 1. Checkout 自己的仓库
       # ==========================================================
       - name: Checkout build repository
         uses: actions/checkout@v4
@@ -42,41 +35,54 @@ jobs:
 
           sudo apt-get install -y \
             build-essential \
-            clang \
+            gcc \
+            g++ \
             flex \
             bison \
-            g++ \
             gawk \
+            make \
             gettext \
-            git \
             libncurses5-dev \
-            libncursesw5-dev \
+            libncurses-dev \
             libssl-dev \
             python3 \
             python3-distutils \
             python3-setuptools \
-            rsync \
+            python-is-python3 \
             unzip \
             zlib1g-dev \
             file \
             wget \
-            curl \
+            git \
+            rsync \
+            subversion \
+            swig \
+            time \
             xsltproc \
             libxml-parser-perl \
             libelf-dev \
-            ecj \
-            fastjar \
-            java-propose-classpath \
-            swig \
-            time \
-            ccache
+            quilt
+
+          echo
+          echo "===== Python ====="
+          python3 --version
+          python --version
+
+          echo
+          echo "===== GCC ====="
+          gcc --version | head -1
+
+          echo
+          echo "===== Make ====="
+          make --version | head -1
 
       # ==========================================================
       # 3. 下载 LEDE
       #
-      # 注意：
-      # R22.5.5-x64-Release 是 TAG，不是 branch
-      # 因此先 clone，再 checkout TAG
+      # 不再使用不存在的 R22.5.5-x64-Release
+      # 不再 fetch 3516c9a
+      #
+      # 直接使用当前 master
       # ==========================================================
       - name: Clone LEDE source
         run: |
@@ -97,91 +103,57 @@ jobs:
           git remote -v
 
           echo
-          echo "===== FETCH COMMIT ====="
-
-          git fetch --depth=1 origin 3516c9a
-
-          echo
-          echo "===== CHECKOUT COMMIT ====="
-
-          git checkout --detach 3516c9a
-
-          echo
-          echo "===== SOURCE INFORMATION ====="
-
-          echo "Commit:"
+          echo "===== SOURCE COMMIT ====="
           git rev-parse HEAD
 
           echo
-          echo "Commit date:"
+          echo "===== SOURCE COMMIT DATE ====="
           git log -1 --format='%ci'
 
           echo
-          echo "Commit message:"
-          git log -1 --oneline
-
-          echo
-          echo "=============================================="
-          
-
-      # ==========================================================
-      # 4. 显示源码版本
-      # ==========================================================
-      - name: Show source information
-        run: |
-          set -e
-
-          cd lede
-
-          echo
-          echo "=============================================="
-          echo "LEDE SOURCE INFORMATION"
-          echo "=============================================="
-
-          echo "Repository:"
-          git remote get-url origin
-
-          echo
-          echo "Tag:"
-          git describe --tags --always
-
-          echo
-          echo "Commit:"
-          git rev-parse HEAD
-
-          echo
-          echo "Commit date:"
-          git log -1 --format='%ci'
-
-          echo
-          echo "Kernel directories:"
-          find target/linux -maxdepth 2 -type d | sort | head -50
-
-          echo
           echo "=============================================="
 
       # ==========================================================
-      # 5. 添加第三方 feeds
+      # 4. 添加 kenzok8/openwrt-packages
       # ==========================================================
-      - name: Add custom feeds
+      - name: Add kenzok8 packages
         run: |
           set -e
 
           cd lede
 
           echo "=============================================="
-          echo "Adding custom feeds"
+          echo "Adding kenzok8/openwrt-packages"
           echo "=============================================="
 
-          cat >> feeds.conf.default <<EOF
-
-          src-git kenzo ${KENZO_REPO}
-          src-git small ${SMALL_REPO}
-          EOF
+          git clone --depth=1 \
+            "${KENZO_REPO}" \
+            package/kenzo
 
           echo
-          echo "===== feeds.conf.default ====="
-          cat feeds.conf.default
+          echo "===== kenzok8 packages ====="
+          ls -lah package/kenzo | head -30
+
+      # ==========================================================
+      # 5. 添加 kenzok8/small
+      # ==========================================================
+      - name: Add kenzok8 small
+        run: |
+          set -e
+
+          cd lede
+
+          echo "=============================================="
+          echo "Adding kenzok8/small"
+          echo "=============================================="
+
+          git clone --depth=1 \
+            "${SMALL_REPO}" \
+            package/small
+
+          echo
+          echo "===== small packages ====="
+          ls -lah package/small | head -30
 
       # ==========================================================
       # 6. 更新 feeds
@@ -192,152 +164,92 @@ jobs:
 
           cd lede
 
-          ./scripts/feeds update -a
+          echo "=============================================="
+          echo "Updating feeds"
+          echo "=============================================="
 
+          ./scripts/feeds update -a
           ./scripts/feeds install -a
 
       # ==========================================================
-      # 7. 导入用户配置
+      # 7. 导入 x86_64 配置
       # ==========================================================
-      - name: Load x86_64 configuration
+      - name: Apply x86_64 configuration
         run: |
           set -e
 
           cd lede
+
+          echo "=============================================="
+          echo "Applying x86_64 configuration"
+          echo "=============================================="
 
           if [ ! -f "../configs/x86_64.config" ]; then
             echo "ERROR: configs/x86_64.config not found"
             exit 1
           fi
 
-          cp ../configs/x86_64.config .config
+          cp "../configs/x86_64.config" .config
 
           echo
-          echo "=============================================="
-          echo "Original configuration"
-          echo "=============================================="
+          echo "===== TARGET ====="
+          grep '^CONFIG_TARGET_' .config || true
 
-          cat .config
+          echo
+          echo "===== WIRELESS ====="
+          grep -E \
+            'CONFIG_PACKAGE_(iw|iwinfo|wireless-regdb|kmod-mac80211|kmod-cfg80211|kmod-iwlwifi)' \
+            .config || true
 
       # ==========================================================
-      # 8. 生成最终配置
+      # 8. 扩展配置
       # ==========================================================
-      - name: Generate defconfig
+      - name: Refresh configuration
         run: |
           set -e
 
           cd lede
+
+          echo "=============================================="
+          echo "Refreshing OpenWrt configuration"
+          echo "=============================================="
 
           make defconfig
 
           echo
-          echo "=============================================="
-          echo "FINAL CONFIGURATION"
-          echo "=============================================="
-
-          echo
-          echo "Target:"
+          echo "===== FINAL TARGET ====="
           grep '^CONFIG_TARGET_' .config || true
 
           echo
-          echo "Wireless:"
-          grep -E \
-            'CONFIG_PACKAGE_(iw|iwinfo|wireless-regdb|kmod-mac80211|kmod-cfg80211|kmod-iwlwifi|kmod-iwlwifi-legacy|kmod-iwlwifi-5000)' \
-            .config || true
-
-          echo
-          echo "VPN:"
-          grep -E \
-            'CONFIG_PACKAGE_(openvpn|openvpn-openssl|luci-app-openvpn)' \
-            .config || true
-
-          echo
-          echo "SSR:"
-          grep -Ei \
-            'CONFIG_PACKAGE_.*(ssr|shadowsocks)' \
-            .config || true
-
-          echo
-          echo "=============================================="
+          echo "===== FINAL PACKAGE CONFIG ====="
+          grep '^CONFIG_PACKAGE_' .config | head -100 || true
 
       # ==========================================================
-      # 9. 检查关键配置
+      # 9. 下载编译依赖
       # ==========================================================
-      - name: Verify required configuration
+      - name: Download package sources
         run: |
           set -e
 
           cd lede
 
           echo "=============================================="
-          echo "VERIFY REQUIRED CONFIGURATION"
+          echo "Downloading package sources"
           echo "=============================================="
-
-          check_config() {
-            CONFIG="$1"
-
-            if grep -q "^${CONFIG}=y" .config || \
-               grep -q "^${CONFIG}=m" .config; then
-              echo "[OK] ${CONFIG}"
-            else
-              echo "[WARNING] ${CONFIG} is NOT enabled"
-            fi
-          }
-
-          echo
-          echo "===== Target ====="
-          check_config CONFIG_TARGET_x86
-          check_config CONFIG_TARGET_x86_64
-
-          echo
-          echo "===== Wireless ====="
-          check_config CONFIG_PACKAGE_iw
-          check_config CONFIG_PACKAGE_iwinfo
-          check_config CONFIG_PACKAGE_wireless-regdb
-          check_config CONFIG_PACKAGE_kmod-cfg80211
-          check_config CONFIG_PACKAGE_kmod-mac80211
-          check_config CONFIG_PACKAGE_kmod-iwlwifi
-          check_config CONFIG_PACKAGE_kmod-iwlwifi-legacy
-
-          echo
-          echo "===== OpenVPN ====="
-          check_config CONFIG_PACKAGE_openvpn-openssl
-          check_config CONFIG_PACKAGE_luci-app-openvpn
-
-          echo
-          echo "===== SSR ====="
-          grep -E \
-            '^CONFIG_PACKAGE_.*(shadowsocks|ssr)' \
-            .config || true
-
-          echo
-          echo "=============================================="
-
-      # ==========================================================
-      # 10. 下载源码包
-      # ==========================================================
-      - name: Download packages
-        run: |
-          set -e
-
-          cd lede
 
           make download -j8 V=s
 
       # ==========================================================
-      # 11. 开始编译
-      #
-      # 第一次编译使用单线程，稳定性最高
+      # 10. 编译
       # ==========================================================
-      - name: Build firmware
+      - name: Build OpenWrt
         run: |
           set -e
 
           cd lede
 
-          echo
           echo "=============================================="
-          echo "START BUILD"
+          echo "Starting OpenWrt build"
           echo "=============================================="
 
           echo
@@ -350,67 +262,49 @@ jobs:
 
           echo
           echo "Disk:"
-          df -h
-
-          echo
-          echo "Source:"
-          git describe --tags --always
-
-          echo
-          echo "Commit:"
-          git rev-parse HEAD
+          df -h .
 
           echo
           echo "=============================================="
 
-          make V=s -j1
+          make -j$(nproc) V=s
 
       # ==========================================================
-      # 12. 显示最终固件
+      # 11. 显示生成结果
       # ==========================================================
-      - name: Show build output
+      - name: Show build results
         if: success()
         run: |
           set -e
 
           cd lede
 
-          echo
           echo "=============================================="
           echo "BUILD SUCCESS"
           echo "=============================================="
 
           echo
-          echo "Firmware directory:"
-          find bin/targets -type f | sort
+          echo "===== TARGET DIRECTORY ====="
+          ls -lah bin/targets/x86/64/ || true
 
           echo
-          echo "Firmware size:"
-          du -ah bin/targets | sort -h | tail -30
+          echo "===== PACKAGES ====="
+          find bin/packages -type f -name '*.ipk' | sort || true
 
           echo
-          echo "=============================================="
+          echo "===== IMAGES ====="
+          find bin/targets/x86/64 -type f | sort || true
 
       # ==========================================================
-      # 13. 上传固件 Artifact
+      # 12. 上传整个编译结果
       # ==========================================================
-      - name: Upload firmware
+      - name: Upload build artifacts
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: openwrt-x86_64
-          path: lede/bin/targets/x86_64/
+          name: openwrt-x86_64-build
+          path: |
+            lede/bin/targets/x86/64/**
+            lede/bin/packages/**
           if-no-files-found: error
-          retention-days: 30
-
-      # ==========================================================
-      # 14. 上传 IPK
-      # ==========================================================
-      - name: Upload packages
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: openwrt-x86_64-packages
-          path: lede/bin/packages/x86_64/
-          if-no-files-found: warn
-          retention-days: 30
+          retention-days: 7
