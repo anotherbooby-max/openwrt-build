@@ -1,310 +1,164 @@
-name: Build OpenWrt x86_64
+name: OpenWrt x86_64 Build
+
 
 on:
   workflow_dispatch:
 
+
 permissions:
   contents: write
 
+
 env:
+
   SOURCE_REPO: https://github.com/coolsnowwolf/lede.git
+
   KENZO_REPO: https://github.com/kenzok8/openwrt-packages.git
+
   SMALL_REPO: https://github.com/kenzok8/small.git
+
   TARGET: x86_64
 
+
+
 jobs:
+
+
   build:
+
+
     runs-on: ubuntu-22.04
+
 
     steps:
 
-      # ==========================================================
-      # 1. Checkout 自己的仓库
-      # ==========================================================
-      - name: Checkout build repository
-        uses: actions/checkout@v4
 
-      # ==========================================================
-      # 2. 安装编译依赖
-      # ==========================================================
-      - name: Install build dependencies
-        run: |
-          set -e
+    - name: Checkout
+      uses: actions/checkout@v4
 
-          sudo apt-get update
 
-          sudo apt-get install -y \
-            build-essential \
-            gcc \
-            g++ \
-            flex \
-            bison \
-            gawk \
-            make \
-            gettext \
-            libncurses5-dev \
-            libncurses-dev \
-            libssl-dev \
-            python3 \
-            python3-distutils \
-            python3-setuptools \
-            python-is-python3 \
-            unzip \
-            zlib1g-dev \
-            file \
-            wget \
-            git \
-            rsync \
-            subversion \
-            swig \
-            time \
-            xsltproc \
-            libxml-parser-perl \
-            libelf-dev \
-            quilt
 
-          echo
-          echo "===== Python ====="
-          python3 --version
-          python --version
+    - name: Install dependencies
+      run: |
 
-          echo
-          echo "===== GCC ====="
-          gcc --version | head -1
+        sudo apt update
 
-          echo
-          echo "===== Make ====="
-          make --version | head -1
+        sudo apt install -y \
+          build-essential \
+          clang \
+          flex \
+          bison \
+          g++ \
+          gawk \
+          gcc-multilib \
+          gettext \
+          git \
+          libncurses-dev \
+          libssl-dev \
+          python3-setuptools \
+          rsync \
+          unzip \
+          zlib1g-dev \
+          file
 
-      # ==========================================================
-      # 3. 下载 LEDE
-      #
-      # 不再使用不存在的 R22.5.5-x64-Release
-      # 不再 fetch 3516c9a
-      #
-      # 直接使用当前 master
-      # ==========================================================
-      - name: Clone LEDE source
-        run: |
-          set -e
 
-          echo "=============================================="
-          echo "Downloading LEDE source"
-          echo "=============================================="
 
-          git clone --depth=1 \
-            "${SOURCE_REPO}" \
-            lede
+    - name: Clone LEDE source
+      run: |
 
-          cd lede
+        set -e
 
-          echo
-          echo "===== SOURCE REMOTE ====="
-          git remote -v
 
-          echo
-          echo "===== SOURCE COMMIT ====="
-          git rev-parse HEAD
+        git clone --depth=1 \
+          ${SOURCE_REPO} \
+          lede
 
-          echo
-          echo "===== SOURCE COMMIT DATE ====="
-          git log -1 --format='%ci'
 
-          echo
-          echo "=============================================="
+        cd lede
 
-      # ==========================================================
-      # 4. 添加 kenzok8/openwrt-packages
-      # ==========================================================
-      - name: Add kenzok8 packages
-        run: |
-          set -e
 
-          cd lede
+        echo "===== LEDE VERSION ====="
 
-          echo "=============================================="
-          echo "Adding kenzok8/openwrt-packages"
-          echo "=============================================="
+        git log -1
 
-          git clone --depth=1 \
-            "${KENZO_REPO}" \
-            package/kenzo
 
-          echo
-          echo "===== kenzok8 packages ====="
-          ls -lah package/kenzo | head -30
+        echo "===== COMMIT ====="
 
-      # ==========================================================
-      # 5. 添加 kenzok8/small
-      # ==========================================================
-      - name: Add kenzok8 small
-        run: |
-          set -e
+        git rev-parse HEAD
 
-          cd lede
 
-          echo "=============================================="
-          echo "Adding kenzok8/small"
-          echo "=============================================="
 
-          git clone --depth=1 \
-            "${SMALL_REPO}" \
-            package/small
+    - name: Add feeds
+      run: |
 
-          echo
-          echo "===== small packages ====="
-          ls -lah package/small | head -30
+        cd lede
 
-      # ==========================================================
-      # 6. 更新 feeds
-      # ==========================================================
-      - name: Update feeds
-        run: |
-          set -e
 
-          cd lede
+        echo "Add kenzok8 packages"
 
-          echo "=============================================="
-          echo "Updating feeds"
-          echo "=============================================="
 
-          ./scripts/feeds update -a
-          ./scripts/feeds install -a
+        git clone --depth=1 \
+          ${KENZO_REPO} \
+          package/kenzo
 
-      # ==========================================================
-      # 7. 导入 x86_64 配置
-      # ==========================================================
-      - name: Apply x86_64 configuration
-        run: |
-          set -e
 
-          cd lede
+        git clone --depth=1 \
+          ${SMALL_REPO} \
+          package/small
 
-          echo "=============================================="
-          echo "Applying x86_64 configuration"
-          echo "=============================================="
 
-          if [ ! -f "../configs/x86_64.config" ]; then
-            echo "ERROR: configs/x86_64.config not found"
-            exit 1
-          fi
 
-          cp "../configs/x86_64.config" .config
+    - name: Update feeds
+      run: |
 
-          echo
-          echo "===== TARGET ====="
-          grep '^CONFIG_TARGET_' .config || true
+        cd lede
 
-          echo
-          echo "===== WIRELESS ====="
-          grep -E \
-            'CONFIG_PACKAGE_(iw|iwinfo|wireless-regdb|kmod-mac80211|kmod-cfg80211|kmod-iwlwifi)' \
-            .config || true
 
-      # ==========================================================
-      # 8. 扩展配置
-      # ==========================================================
-      - name: Refresh configuration
-        run: |
-          set -e
+        ./scripts/feeds update -a
 
-          cd lede
 
-          echo "=============================================="
-          echo "Refreshing OpenWrt configuration"
-          echo "=============================================="
+        ./scripts/feeds install -a
 
-          make defconfig
 
-          echo
-          echo "===== FINAL TARGET ====="
-          grep '^CONFIG_TARGET_' .config || true
 
-          echo
-          echo "===== FINAL PACKAGE CONFIG ====="
-          grep '^CONFIG_PACKAGE_' .config | head -100 || true
+    - name: Load x86 config
+      run: |
 
-      # ==========================================================
-      # 9. 下载编译依赖
-      # ==========================================================
-      - name: Download package sources
-        run: |
-          set -e
+        cd lede
 
-          cd lede
 
-          echo "=============================================="
-          echo "Downloading package sources"
-          echo "=============================================="
+        cp ../configs/x86_64.config .config
 
-          make download -j8 V=s
 
-      # ==========================================================
-      # 10. 编译
-      # ==========================================================
-      - name: Build OpenWrt
-        run: |
-          set -e
+        make defconfig
 
-          cd lede
 
-          echo "=============================================="
-          echo "Starting OpenWrt build"
-          echo "=============================================="
 
-          echo
-          echo "CPU:"
-          nproc
+    - name: Build firmware
+      run: |
 
-          echo
-          echo "Memory:"
-          free -h
+        cd lede
 
-          echo
-          echo "Disk:"
-          df -h .
 
-          echo
-          echo "=============================================="
+        make -j$(nproc)
 
-          make -j$(nproc) V=s
 
-      # ==========================================================
-      # 11. 显示生成结果
-      # ==========================================================
-      - name: Show build results
-        if: success()
-        run: |
-          set -e
 
-          cd lede
+    - name: Package firmware
+      run: |
 
-          echo "=============================================="
-          echo "BUILD SUCCESS"
-          echo "=============================================="
+        mkdir -p output
 
-          echo
-          echo "===== TARGET DIRECTORY ====="
-          ls -lah bin/targets/x86/64/ || true
 
-          echo
-          echo "===== PACKAGES ====="
-          find bin/packages -type f -name '*.ipk' | sort || true
+        cp lede/bin/targets/x86/64/* output/
 
-          echo
-          echo "===== IMAGES ====="
-          find bin/targets/x86/64 -type f | sort || true
 
-      # ==========================================================
-      # 12. 上传整个编译结果
-      # ==========================================================
-      - name: Upload build artifacts
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: openwrt-x86_64-build
-          path: |
-            lede/bin/targets/x86/64/**
-            lede/bin/packages/**
-          if-no-files-found: error
-          retention-days: 7
+
+    - name: Upload firmware
+      uses: actions/upload-artifact@v4
+
+      with:
+
+        name: openwrt-x86_64
+
+        path: output/
