@@ -1,4 +1,4 @@
-name: OpenWrt x86_64 Build
+name: Build OpenWrt R22.3.13 x86_64
 
 
 on:
@@ -13,11 +13,12 @@ env:
 
   SOURCE_REPO: https://github.com/coolsnowwolf/lede.git
 
+  # 固定 R22.3.13 对应提交
+  SOURCE_COMMIT: 3516c9a
+
   KENZO_REPO: https://github.com/kenzok8/openwrt-packages.git
 
   SMALL_REPO: https://github.com/kenzok8/small.git
-
-  TARGET: x86_64
 
 
 
@@ -53,6 +54,7 @@ jobs:
           gcc-multilib \
           gettext \
           git \
+          libncurses5-dev \
           libncurses-dev \
           libssl-dev \
           python3-setuptools \
@@ -63,13 +65,13 @@ jobs:
 
 
 
-    - name: Clone LEDE source
+    - name: Clone LEDE R22.3.13 source
       run: |
 
         set -e
 
 
-        git clone --depth=1 \
+        git clone \
           ${SOURCE_REPO} \
           lede
 
@@ -77,34 +79,42 @@ jobs:
         cd lede
 
 
-        echo "===== LEDE VERSION ====="
-
-        git log -1
+        echo "===== FETCH COMMIT ====="
 
 
-        echo "===== COMMIT ====="
-
-        git rev-parse HEAD
+        git fetch origin ${SOURCE_COMMIT}
 
 
 
-    - name: Add feeds
+        echo "===== CHECKOUT ====="
+
+
+        git checkout ${SOURCE_COMMIT}
+
+
+
+        echo "===== VERSION ====="
+
+
+        git log -1 --oneline
+
+
+
+    - name: Add kenzok8 packages
       run: |
 
         cd lede
 
 
-        echo "Add kenzok8 packages"
+        git clone --depth=1 \
+        ${KENZO_REPO} \
+        package/kenzo
+
 
 
         git clone --depth=1 \
-          ${KENZO_REPO} \
-          package/kenzo
-
-
-        git clone --depth=1 \
-          ${SMALL_REPO} \
-          package/small
+        ${SMALL_REPO} \
+        package/small
 
 
 
@@ -121,7 +131,7 @@ jobs:
 
 
 
-    - name: Load x86 config
+    - name: Load x86_64 config
       run: |
 
         cd lede
@@ -134,23 +144,23 @@ jobs:
 
 
 
-    - name: Build firmware
+    - name: Compile
       run: |
 
         cd lede
 
 
-        make -j$(nproc)
+        make -j$(nproc) V=s
 
 
 
-    - name: Package firmware
+    - name: Collect firmware
       run: |
 
-        mkdir -p output
+        mkdir output
 
 
-        cp lede/bin/targets/x86/64/* output/
+        cp -r lede/bin/targets/x86/64/* output/
 
 
 
@@ -159,6 +169,6 @@ jobs:
 
       with:
 
-        name: openwrt-x86_64
+        name: OpenWrt-R22.3.13-x86_64
 
         path: output/
