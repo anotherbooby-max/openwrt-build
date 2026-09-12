@@ -1,4 +1,4 @@
-name: Build LEDE x86_64
+name: Build LEDE R21.02 x86_64 Intel 5100 AP
 
 on:
   workflow_dispatch:
@@ -7,25 +7,20 @@ permissions:
   contents: write
 
 jobs:
-
   build:
-
     runs-on: ubuntu-22.04
 
     steps:
 
-      # ==========================================================
-      # 1. Checkout 自己的 openwrt-build 仓库
-      # ==========================================================
-
-      - name: Checkout repository
+      # ============================================================
+      # 1. Checkout 自己的仓库
+      # ============================================================
+      - name: Checkout
         uses: actions/checkout@v4
 
-
-      # ==========================================================
-      # 2. 安装编译依赖
-      # ==========================================================
-
+      # ============================================================
+      # 2. 安装编译环境
+      # ============================================================
       - name: Install dependencies
         run: |
           sudo apt-get update
@@ -35,13 +30,18 @@ jobs:
             clang \
             flex \
             bison \
+            g++ \
             gawk \
+            gcc-multilib \
+            g++-multilib \
             gettext \
             git \
             libncurses5-dev \
+            libncursesw5-dev \
             libssl-dev \
+            python2 \
+            python2-dev \
             python3 \
-            python3-setuptools \
             rsync \
             unzip \
             zlib1g-dev \
@@ -49,274 +49,331 @@ jobs:
             wget \
             curl \
             xsltproc \
-            subversion \
-            swig
+            swig \
+            time \
+            ccache
 
-
-      # ==========================================================
-      # 3. 检查自己的配置文件
-      # ==========================================================
-
-      - name: Check config
+      # ============================================================
+      # 3. 下载 LEDE R21.02
+      #
+      # 注意：
+      # 不使用官方 OpenWrt
+      # 不使用 openwrt-19.07
+      # 不使用 24.10
+      # ============================================================
+      - name: Clone LEDE R21.02
         run: |
+          git clone --depth=1 --branch R21.02 https://github.com/coolsnowwolf/lede.git lede
+          cd lede
+          git log -1 --oneline
+          echo "========================================"
+          echo "LEDE SOURCE"
+          echo "========================================"
+          git remote -v
+          git branch -a
 
-          echo "=========================================="
-          echo "Repository"
-          echo "=========================================="
-
-          pwd
-
-          echo
-
-          find . -maxdepth 4 -type f | sort
-
-          echo
-
-          echo "=========================================="
-          echo "x86_64.config"
-          echo "=========================================="
-
-          test -f configs/x86_64.config
-
-          cat configs/x86_64.config
-
-
-      # ==========================================================
-      # 4. Clone LEDE
-      # ==========================================================
-
-      - name: Clone LEDE
+      # ============================================================
+      # 4. 检查源码版本
+      # ============================================================
+      - name: Check LEDE source
         run: |
-
-          git clone \
-            --depth=1 \
-            https://github.com/coolsnowwolf/lede.git \
-            lede
-
           cd lede
 
-          echo "=========================================="
-          echo "LEDE commit"
-          echo "=========================================="
+          echo "========================================"
+          echo "CHECK LEDE"
+          echo "========================================"
 
+          echo "Git remote:"
+          git remote -v
+
+          echo
+          echo "Git branch:"
+          git branch -a
+
+          echo
+          echo "Git commit:"
           git log -1 --oneline
 
+          echo
+          echo "Source Makefile:"
+          head -30 Makefile
 
-      # ==========================================================
-      # 5. Update feeds
-      # ==========================================================
+      # ============================================================
+      # 5. 配置 feeds
+      #
+      # 关键：
+      # 不添加新版 OpenWrt LuCI
+      # 不添加 openwrt-25.12
+      # ============================================================
+      - name: Configure feeds
+        run: |
+          cd lede
 
+          echo "========================================"
+          echo "CONFIGURE FEEDS"
+          echo "========================================"
+
+          cat > feeds.conf.default <<'EOF'
+          src-git packages https://github.com/coolsnowwolf/packages.git
+          src-git luci https://github.com/coolsnowwolf/luci.git
+          src-git routing https://github.com/coolsnowwolf/routing.git
+          src-git telephony https://github.com/coolsnowwolf/telephony.git
+          src-git kenzo https://github.com/kenzok8/openwrt-packages.git
+          EOF
+
+          echo
+          echo "========== feeds.conf.default =========="
+          cat feeds.conf.default
+
+      # ============================================================
+      # 6. 更新 feeds
+      # ============================================================
       - name: Update feeds
         run: |
-
           cd lede
 
           ./scripts/feeds update -a
-
           ./scripts/feeds install -a
 
-
-      # ==========================================================
-      # 6. 导入配置
-      # ==========================================================
-
-      - name: Load x86_64 config
+      # ============================================================
+      # 7. 检查 feeds，防止再次混入 25.12
+      # ============================================================
+      - name: Verify feeds
         run: |
-
           cd lede
 
-          cp ../configs/x86_64.config .config
-
-          echo "=========================================="
-          echo "Before defconfig"
-          echo "=========================================="
-
-          grep "^CONFIG_TARGET_x86" .config || true
+          echo "========================================"
+          echo "VERIFY FEEDS"
+          echo "========================================"
 
           echo
+          echo "feeds.conf.default:"
+          cat feeds.conf.default
+
+          echo
+          echo "LuCI git:"
+          git -C feeds/luci log -1 --oneline || true
+
+          echo
+          echo "LuCI remote:"
+          git -C feeds/luci remote -v || true
+
+          echo
+          echo "Checking forbidden OpenWrt 25.12 strings..."
+
+          if grep -R "openwrt-25.12" feeds/luci 2>/dev/null; then
+            echo "ERROR: OpenWrt 25.12 LuCI detected!"
+            exit 1
+          fi
+
+          echo "No OpenWrt 25.12 LuCI detected."
+
+      # ============================================================
+      # 8. 写入 x86_64 配置
+      # ============================================================
+      - name: Load x86_64 config
+        run: |
+          cd lede
+
+          cat > .config <<'EOF'
+          CONFIG_TARGET_x86=y
+          CONFIG_TARGET_x86_64=y
+          CONFIG_TARGET_x86_64_DEVICE_generic=y
+
+          CONFIG_TARGET_ROOTFS_EXT4FS=y
+          CONFIG_TARGET_ROOTFS_SQUASHFS=y
+
+          CONFIG_PACKAGE_kmod-mac80211=y
+          CONFIG_PACKAGE_kmod-cfg80211=y
+          CONFIG_PACKAGE_kmod-iwlwifi=y
+          CONFIG_PACKAGE_kmod-iwlwifi-agn=y
+          CONFIG_PACKAGE_kmod-iwlwifi-dvm=y
+          CONFIG_PACKAGE_iwlwifi-firmware-iwlwifi-5000-ucode=y
+
+          CONFIG_PACKAGE_iw=y
+          CONFIG_PACKAGE_iwinfo=y
+          CONFIG_PACKAGE_wireless-regdb=y
+
+          CONFIG_PACKAGE_hostapd=y
+          CONFIG_PACKAGE_wpad=y
+
+          CONFIG_PACKAGE_luci=y
+          CONFIG_PACKAGE_luci-ssl=y
+          CONFIG_PACKAGE_luci-app-firewall=y
+          CONFIG_PACKAGE_luci-app-opkg=y
+
+          CONFIG_PACKAGE_kmod-tun=y
+          CONFIG_PACKAGE_openvpn-openssl=y
+          CONFIG_PACKAGE_luci-app-openvpn=y
+
+          CONFIG_PACKAGE_dnsmasq=y
+          CONFIG_PACKAGE_odhcp6c=y
+          CONFIG_PACKAGE_odhcpd-ipv6only=y
+
+          CONFIG_PACKAGE_iptables=y
+          CONFIG_PACKAGE_iptables-mod-conntrack-extra=y
+          CONFIG_PACKAGE_iptables-mod-ipopt=y
+          CONFIG_PACKAGE_iptables-mod-tproxy=y
+
+          CONFIG_PACKAGE_ca-bundle=y
+          CONFIG_PACKAGE_curl=y
+          CONFIG_PACKAGE_wget=y
+
+          CONFIG_PACKAGE_bash=y
+          CONFIG_PACKAGE_htop=y
+          CONFIG_PACKAGE_nano=y
+
+          CONFIG_PACKAGE_kmod-usb-core=y
+          CONFIG_PACKAGE_usbutils=y
+
+          CONFIG_PACKAGE_kmod-r8169=y
+          CONFIG_PACKAGE_ethtool=y
+
+          CONFIG_PACKAGE_rpcd=y
+          CONFIG_PACKAGE_rpcd-mod-rrdns=y
+          EOF
+
+          echo "========================================"
+          echo "RAW CONFIG"
+          echo "========================================"
+
+          cat .config
+
+      # ============================================================
+      # 9. 运行 defconfig
+      # ============================================================
+      - name: Run defconfig
+        run: |
+          cd lede
 
           make defconfig
 
-          echo
-
-          echo "=========================================="
-          echo "After defconfig"
-          echo "=========================================="
-
-          grep "^CONFIG_TARGET_x86" .config || true
-
-          echo
-
-          echo "=========================================="
-          echo "Wireless configuration"
-          echo "=========================================="
+          echo "========================================"
+          echo "FINAL CONFIG"
+          echo "========================================"
 
           grep -E \
-            "kmod-iwlwifi|kmod-mac80211|kmod-cfg80211|iwlwifi-firmware|wpad|wireless-regdb" \
+            "CONFIG_TARGET_x86|CONFIG_PACKAGE_kmod-iwlwifi|CONFIG_PACKAGE_iwlwifi|CONFIG_PACKAGE_mac80211|CONFIG_PACKAGE_hostapd|CONFIG_PACKAGE_wpad" \
             .config || true
 
-
-      # ==========================================================
-      # 7. 下载源码包
-      # ==========================================================
-
-      - name: Download
+      # ============================================================
+      # 10. 下载源码包
+      # ============================================================
+      - name: Download sources
         run: |
-
           cd lede
 
-          make download -j8
+          make download -j$(nproc) V=s
 
-
-      # ==========================================================
-      # 8. 编译
-      # ==========================================================
-
-      - name: Build
+      # ============================================================
+      # 11. 编译
+      # ============================================================
+      - name: Build firmware
         run: |
-
           cd lede
 
-          echo "=========================================="
-          echo "CPU"
-          echo "=========================================="
+          echo "========================================"
+          echo "START BUILD"
+          echo "========================================"
 
-          nproc
+          make -j$(nproc) V=s
 
-          echo
-
-          echo "=========================================="
-          echo "Start build"
-          echo "=========================================="
-
-          make -j2 V=s
-
-
-      # ==========================================================
-      # 9. 显示固件
-      # ==========================================================
-
+      # ============================================================
+      # 12. 显示编译结果
+      # ============================================================
       - name: Show firmware
+        if: always()
         run: |
+          cd lede
 
-          echo "=========================================="
-          echo "Firmware"
-          echo "=========================================="
+          echo "========================================"
+          echo "FIRMWARE FILES"
+          echo "========================================"
 
-          find lede/bin/targets/x86/64 \
-            -maxdepth 2 \
-            -type f \
-            -printf "%p\n" \
-            | sort
-
-
-      # ==========================================================
-      # 10. 创建 Release 文件目录
-      # ==========================================================
-
-      - name: Prepare release
-        run: |
-
-          rm -rf release
-
-          mkdir -p release
-
-          cp -av \
-            lede/bin/targets/x86/64/* \
-            release/
+          find bin/targets/x86/64 -type f -maxdepth 2 -print 2>/dev/null || true
 
           echo
+          echo "========================================"
+          echo "PACKAGE FILES"
+          echo "========================================"
 
-          echo "=========================================="
-          echo "Release files"
-          echo "=========================================="
+          find bin/packages -type f 2>/dev/null | head -200 || true
 
-          ls -lah release
-
-
-      # ==========================================================
-      # 11. 上传 Actions Artifact
-      # ==========================================================
-
-      - name: Upload artifact
+      # ============================================================
+      # 13. 上传全部编译结果到 Artifact
+      # ============================================================
+      - name: Upload firmware artifact
+        if: always()
         uses: actions/upload-artifact@v4
-
         with:
-          name: LEDE-x86_64
+          name: lede-r21.02-x86_64
+          path: |
+            lede/bin/targets/x86/64/
+            lede/bin/packages/
+          if-no-files-found: warn
+          retention-days: 7
 
-          path: release/
+      # ============================================================
+      # 14. 准备 Release 文件
+      # ============================================================
+      - name: Prepare release
+        if: success()
+        run: |
+          cd lede
 
-          if-no-files-found: error
+          mkdir -p ../release
 
+          echo "========================================"
+          echo "COPY TARGET FILES"
+          echo "========================================"
 
-      # ==========================================================
-      # 12. 创建 GitHub Release
-      # ==========================================================
+          find bin/targets/x86/64 -type f -exec cp {} ../release/ \;
 
+          echo
+          echo "Release files:"
+          ls -lah ../release
+
+      # ============================================================
+      # 15. 创建 GitHub Release
+      # ============================================================
       - name: Create GitHub Release
+        if: success()
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: lede-r21.02-x86_64-${{ github.run_number }}
+          name: LEDE R21.02 x86_64 Build ${{ github.run_number }}
+          body: |
+            # LEDE R21.02 x86_64
+
+            Source:
+            https://github.com/coolsnowwolf/lede
+
+            Target:
+            x86_64
+
+            Hardware:
+            Intel WiFi Link 5100 AGN
+
+            PCI:
+            8086:4232
+
+            Wireless:
+            - mac80211
+            - cfg80211
+            - iwlwifi
+            - iwldvm
+            - iwlwifi 5000 firmware
+            - hostapd
+            - 2.4GHz
+            - 5GHz
+
+            This build is intended to test Intel WiFi Link 5100 AP mode.
+
+            Build:
+            ${{ github.run_number }}
+
+          files: |
+            release/*
+          fail_on_unmatched_files: false
         env:
-          GH_TOKEN: ${{ github.token }}
-
-        run: |
-
-          TAG="lede-x86_64-${GITHUB_RUN_NUMBER}"
-
-          TITLE="LEDE x86_64 Build ${GITHUB_RUN_NUMBER}"
-
-          echo "=========================================="
-          echo "Release"
-          echo "=========================================="
-
-          echo "TAG:"
-          echo "$TAG"
-
-          echo "TITLE:"
-          echo "$TITLE"
-
-
-          gh release create "$TAG" \
-            release/* \
-            --repo "${GITHUB_REPOSITORY}" \
-            --title "$TITLE" \
-            --notes "LEDE x86_64 firmware
-
-Source:
-coolsnowwolf/lede
-
-Architecture:
-x86_64
-
-Build:
-GitHub Actions
-
-Run:
-${GITHUB_RUN_NUMBER}
-
-Commit:
-${GITHUB_SHA}
-"
-
-
-      # ==========================================================
-      # 13. 完成
-      # ==========================================================
-
-      - name: Build complete
-        run: |
-
-          echo "=========================================="
-          echo "BUILD COMPLETE"
-          echo "=========================================="
-
-          echo "Repository:"
-          echo "${GITHUB_REPOSITORY}"
-
-          echo
-
-          echo "Release:"
-          echo "lede-x86_64-${GITHUB_RUN_NUMBER}"
-
-          echo
-
-          echo "Open Releases:"
-          echo "https://github.com/${GITHUB_REPOSITORY}/releases"
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
