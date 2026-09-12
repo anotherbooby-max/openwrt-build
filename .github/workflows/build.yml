@@ -1,4 +1,4 @@
-name: Build OpenWrt x86_64 R22
+name: Build OpenWrt x86_64 WiFi5100
 
 
 on:
@@ -9,9 +9,7 @@ env:
 
   SOURCE_REPO: https://github.com/coolsnowwolf/lede.git
 
-  SOURCE_BRANCH: openwrt-22.03
-
-  TARGET: x86_64
+  SOURCE_BRANCH: master
 
 
 
@@ -25,7 +23,7 @@ jobs:
     steps:
 
 
-    - name: Checkout build config
+    - name: Checkout
 
       uses: actions/checkout@v4
 
@@ -57,13 +55,13 @@ jobs:
 
 
 
-    - name: Clone LEDE source
+    - name: Clone LEDE
 
       run: |
 
         git clone \
-        --branch ${SOURCE_BRANCH} \
         --depth=1 \
+        --branch ${SOURCE_BRANCH} \
         ${SOURCE_REPO} \
         lede
 
@@ -79,7 +77,7 @@ jobs:
 
 
 
-    - name: Add wireless config
+    - name: Load x86 config
 
       run: |
 
@@ -109,7 +107,7 @@ jobs:
 
 
 
-    - name: Download packages
+    - name: Download
 
       run: |
 
@@ -125,25 +123,25 @@ jobs:
 
         cd lede
 
-        make -j$(nproc)
+        make -j$(nproc) V=s
 
 
 
-    - name: Check firmware
+    - name: Firmware
 
       run: |
 
-        ls -lh lede/bin/targets/x86/64/
+        ls -lh lede/bin/targets/x86/64
 
 
 
-    - name: Upload firmware
+    - name: Upload
 
       uses: actions/upload-artifact@v4
 
       with:
 
-        name: openwrt-x86-64-r22-wifi5100
+        name: openwrt-x86-64-wifi5100
 
         path:
 
