@@ -10,7 +10,7 @@ env:
   SOURCE_REPO: https://github.com/coolsnowwolf/lede.git
 
   # 使用 LEDE 的正式 Tag
-  SOURCE_TAG: R22.5.5-x64-Release
+  SOURCE_COMMIT: 3516c9a
 
   KENZO_REPO: https://github.com/kenzok8/openwrt-packages.git
   SMALL_REPO: https://github.com/kenzok8/small.git
