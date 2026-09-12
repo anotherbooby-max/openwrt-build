@@ -1,148 +1,157 @@
-name: Build OpenWrt x86_64 WiFi5100
-
+name: Build OpenWrt x86_64 Intel5100
 
 on:
   workflow_dispatch:
-
 
 env:
 
   SOURCE_REPO: https://github.com/coolsnowwolf/lede.git
 
+  # 2022年稳定版本
   SOURCE_BRANCH: master
 
+  TARGET: x86_64
 
 
 jobs:
 
-  build:
+ build:
 
-    runs-on: ubuntu-22.04
-
-
-    steps:
+  runs-on: ubuntu-22.04
 
 
-    - name: Checkout
-
-      uses: actions/checkout@v4
+  steps:
 
 
+  - name: Checkout build repo
+    uses: actions/checkout@v4
 
-    - name: Install dependencies
 
-      run: |
+  - name: Install dependencies
 
-        sudo apt update
+    run: |
 
-        sudo apt install -y \
+      sudo apt update
+
+      sudo apt install -y \
         build-essential \
         clang \
         flex \
         bison \
         g++ \
         gawk \
-        gcc-multilib \
         gettext \
         git \
         libncurses5-dev \
         libssl-dev \
-        python3-distutils \
+        python3 \
         rsync \
         unzip \
-        zlib1g-dev \
+        zstd \
         file
 
 
 
-    - name: Clone LEDE
+  - name: Clone LEDE
 
-      run: |
-
-        git clone \
-        --depth=1 \
-        --branch ${SOURCE_BRANCH} \
-        ${SOURCE_REPO} \
-        lede
+    run: |
 
 
-        cd lede
+      git clone \
+      --depth=1 \
+      ${SOURCE_REPO} \
+      lede
 
 
-        echo "===== SOURCE ====="
+      cd lede
 
-        git branch
 
-        git log -1 --oneline
+      echo "===== SOURCE ====="
+
+      git log -1 --oneline
 
 
 
-    - name: Load x86 config
-
-      run: |
-
-        cp configs/x86_64.config lede/.config
+  - name: Add wireless packages
 
 
+    run: |
 
-    - name: Update feeds
+      cd lede
 
-      run: |
 
-        cd lede
-
-        ./scripts/feeds update -a
-
-        ./scripts/feeds install -a
+      git clone \
+      https://github.com/kenzok8/openwrt-packages.git \
+      package/kenzo
 
 
 
-    - name: Defconfig
-
-      run: |
-
-        cd lede
-
-        make defconfig
+  - name: Update feeds
 
 
+    run: |
 
-    - name: Download
+      cd lede
 
-      run: |
 
-        cd lede
+      ./scripts/feeds update -a
 
-        make download -j8
+      ./scripts/feeds install -a
 
 
 
-    - name: Compile
-
-      run: |
-
-        cd lede
-
-        make -j$(nproc) V=s
+  - name: Load x86 config
 
 
+    run: |
 
-    - name: Firmware
 
-      run: |
+      cd lede
 
-        ls -lh lede/bin/targets/x86/64
+
+      cp ../configs/x86_64.config .config
+
+
+      make defconfig
 
 
 
-    - name: Upload
+  - name: Compile
 
-      uses: actions/upload-artifact@v4
 
-      with:
+    run: |
 
-        name: openwrt-x86-64-wifi5100
 
-        path:
+      cd lede
 
-          lede/bin/targets/x86/64/*
+
+      make download -j8
+
+
+      make -j$(nproc) V=s
+
+
+
+  - name: Collect firmware
+
+
+    run: |
+
+
+      mkdir output
+
+
+      cp lede/bin/targets/x86/64/* output/
+
+
+  - name: Upload
+
+
+    uses: actions/upload-artifact@v4
+
+
+    with:
+
+      name: openwrt-x86-64-intel5100
+
+      path: output/
