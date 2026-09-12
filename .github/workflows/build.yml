@@ -175,15 +175,15 @@ jobs:
           cd lede
 
           echo "========================================"
-          echo "加载 configs/86_64.config"
+          echo "加载 configs/x86_64.config"
           echo "========================================"
 
-          if [ ! -f ../configs/86_64.config ]; then
-            echo "错误：configs/86_64.config 不存在"
+          if [ ! -f ../configs/x86_64.config ]; then
+            echo "错误：configs/x86_64.config 不存在"
             exit 1
           fi
 
-          cp ../configs/86_64.config .config
+          cp ../configs/x86_64.config .config
 
           echo
           echo "TARGET 配置："
