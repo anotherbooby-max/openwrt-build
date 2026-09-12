@@ -1,4 +1,5 @@
-name: Build OpenWrt x86_64 LEDE
+```yaml
+name: Build LEDE x86_64
 
 on:
   workflow_dispatch:
@@ -7,9 +8,9 @@ permissions:
   contents: write
 
 env:
-  REPO_URL: https://github.com/coolsnowwolf/lede.git
-  REPO_BRANCH: master
-  TARGET_PROFILE: x86/64
+  LEDE_REPO: https://github.com/coolsnowwolf/lede.git
+  LEDE_REF: 20211001
+  KENZOK_REPO: https://github.com/kenzok8/openwrt-packages.git
 
 jobs:
   build:
@@ -17,15 +18,31 @@ jobs:
 
     steps:
 
-      # ==========================================================
-      # 1. 检出自己的 openwrt-build 仓库
-      # ==========================================================
-      - name: Checkout build repository
-        uses: actions/checkout@v4
+      # ============================================================
+      # 1. 检查编译环境
+      # ============================================================
+      - name: Check runner
+        run: |
+          echo "=================================================="
+          echo " GitHub Actions Build Environment"
+          echo "=================================================="
 
-      # ==========================================================
-      # 2. 安装编译环境
-      # ==========================================================
+          uname -a
+          echo
+          echo "CPU:"
+          nproc
+
+          echo
+          echo "Memory:"
+          free -h
+
+          echo
+          echo "Disk:"
+          df -h
+
+      # ============================================================
+      # 2. 安装编译依赖
+      # ============================================================
       - name: Install build dependencies
         run: |
           sudo apt-get update
@@ -33,62 +50,80 @@ jobs:
           sudo apt-get install -y \
             build-essential \
             clang \
+            cmake \
+            cpio \
+            curl \
+            device-tree-compiler \
             flex \
-            bison \
             gawk \
-            gettext \
             gcc-multilib \
             g++-multilib \
+            gettext \
             git \
-            rsync \
-            unzip \
-            wget \
-            curl \
-            file \
+            gperf \
+            haveged \
+            libelf-dev \
+            libncurses5-dev \
+            libncursesw5-dev \
+            libssl-dev \
+            libtool \
             python3 \
             python3-distutils \
             python3-setuptools \
-            python3-pip \
-            python3-pyelftools \
-            libncurses5-dev \
-            libncursesw5-dev \
-            zlib1g-dev \
-            libssl-dev \
-            xsltproc \
+            rsync \
             swig \
-            time \
-            ccache \
-            gettext \
-            libelf-dev \
-            device-tree-compiler \
-            qemu-utils \
-            subversion \
-            unzip
+            unzip \
+            wget \
+            xsltproc \
+            zlib1g-dev \
+            file \
+            time
 
-      # ==========================================================
-      # 3. 克隆 coolsnowwolf/lede
-      #
-      # 注意：
-      # 不能使用 --branch R21.02
-      #
-      # coolsnowwolf/lede 没有 R21.02 分支
-      # ==========================================================
-      - name: Clone coolsnowwolf LEDE
+      # ============================================================
+      # 3. 下载 LEDE 源码
+      # ============================================================
+      - name: Clone LEDE source
         run: |
+          echo "=================================================="
+          echo " Download LEDE source"
+          echo "=================================================="
+
           git clone \
             --depth=1 \
-            --branch "${REPO_BRANCH}" \
-            "${REPO_URL}" \
+            --branch "${LEDE_REF}" \
+            "${LEDE_REPO}" \
             lede
 
           cd lede
 
-          echo "========================================"
-          echo "LEDE 源码信息"
-          echo "========================================"
+          echo
+          echo "Remote:"
+          git remote -v
+
+          echo
+          echo "Current branch:"
+          git branch --show-current
+
+          echo
+          echo "Commit:"
+          git log -1 --oneline
+
+          echo
+          echo "Commit date:"
+          git log -1 --format='%ci'
+
+      # ============================================================
+      # 4. 验证源码
+      # ============================================================
+      - name: Verify LEDE source
+        working-directory: lede
+        run: |
+          echo "=================================================="
+          echo " SOURCE VERIFICATION"
+          echo "=================================================="
 
           echo "Repository:"
-          git remote -v
+          git remote get-url origin
 
           echo
           echo "Branch:"
@@ -103,369 +138,352 @@ jobs:
           git rev-parse --short HEAD
 
           echo
+          echo "Commit date:"
+          git log -1 --format='%ci'
+
+          echo
           echo "Commit message:"
-          git log -1 --pretty=format:"%s"
+          git log -1 --format='%s'
 
           echo
-          echo "========================================"
+          echo "Makefile version information:"
+          grep -E \
+            '^(VERSION_NUMBER|VERSION_CODE|VERSION_REPO|VERSION_DIST|VERSION_MANUFACTURER|VERSION_MANUFACTURER_URL)' \
+            include/version.mk || true
 
-      # ==========================================================
-      # 4. 检查源码 Makefile
-      # ==========================================================
-      - name: Check LEDE version
-        run: |
-          cd lede
-
-          echo "========================================"
-          echo "Makefile 版本信息"
-          echo "========================================"
-
-          grep -E '^(DISTRIB_ID|DISTRIB_RELEASE|DISTRIB_REVISION)' \
-            include/version.mk \
-            2>/dev/null || true
-
-          echo
-          echo "源码 Makefile："
-          head -40 Makefile
-
-          echo
-          echo "========================================"
-
-      # ==========================================================
-      # 5. 添加 kenzok8/openwrt-packages
-      # ==========================================================
+      # ============================================================
+      # 5. 加入 kenzok8/openwrt-packages
+      # ============================================================
       - name: Add kenzok8 packages
+        working-directory: lede
         run: |
-          cd lede
+          echo "=================================================="
+          echo " Add kenzok8/openwrt-packages"
+          echo "=================================================="
 
-          echo "src-git kenzo https://github.com/kenzok8/openwrt-packages" \
-            >> feeds.conf.default
-
-          echo "========================================"
-          echo "feeds.conf.default"
-          echo "========================================"
-
-          cat feeds.conf.default
-
-          echo "========================================"
-
-      # ==========================================================
-      # 6. 更新 feeds
-      # ==========================================================
-      - name: Update feeds
-        run: |
-          cd lede
+          echo "src-git kenzok https://github.com/kenzok8/openwrt-packages.git" >> feeds.conf.default
 
           ./scripts/feeds update -a
 
-      # ==========================================================
-      # 7. 安装 feeds
-      # ==========================================================
-      - name: Install feeds
-        run: |
-          cd lede
-
           ./scripts/feeds install -a
 
-      # ==========================================================
-      # 8. 使用你的 x86_64 配置文件
-      # ==========================================================
-      - name: Load x86_64 configuration
+          echo
+          echo "Feeds:"
+          ./scripts/feeds list
+
+      # ============================================================
+      # 6. 检查 kenzok feed
+      # ============================================================
+      - name: Verify kenzok feed
+        working-directory: lede
         run: |
-          cd lede
+          echo "=================================================="
+          echo " Kenzok feed verification"
+          echo "=================================================="
 
-          echo "========================================"
-          echo "加载 configs/x86_64.config"
-          echo "========================================"
+          ls -lah feeds/kenzok || true
 
-          if [ ! -f ../configs/x86_64.config ]; then
-            echo "错误：configs/x86_64.config 不存在"
-            exit 1
-          fi
+          echo
+          echo "SSR Plus:"
+          find feeds/kenzok -maxdepth 3 \
+            -type d \
+            -iname '*ssr*' \
+            2>/dev/null || true
+
+      # ============================================================
+      # 7. 导入 x86_64 配置
+      # ============================================================
+      - name: Load x86_64 configuration
+        working-directory: lede
+        run: |
+          echo "=================================================="
+          echo " Load x86_64 configuration"
+          echo "=================================================="
 
           cp ../configs/x86_64.config .config
 
           echo
-          echo "TARGET 配置："
-          grep '^CONFIG_TARGET' .config || true
+          echo "Initial configuration:"
+          cat .config
 
           echo
-          echo "========================================"
-
-      # ==========================================================
-      # 9. 强制设置 x86_64
-      # ==========================================================
-      - name: Configure x86_64 target
-        run: |
-          cd lede
-
-          cat >> .config <<'EOF'
-
-          # ======================================================
-          # x86_64 target
-          # ======================================================
-
-          CONFIG_TARGET_x86=y
-          CONFIG_TARGET_x86_64=y
-          CONFIG_TARGET_x86_64_DEVICE_generic=y
-
-          EOF
+          echo "Running defconfig..."
 
           make defconfig
 
-          echo "========================================"
-          echo "最终 TARGET 配置"
-          echo "========================================"
-
-          grep '^CONFIG_TARGET' .config
-
-          echo "========================================"
-
-      # ==========================================================
-      # 10. 无线驱动
-      #
-      # Intel Wireless 5100
-      # PCI ID:
-      # 8086:4232
-      #
-      # 对应 iwlwifi
-      # ==========================================================
-      - name: Configure Intel wireless drivers
-        run: |
-          cd lede
-
-          cat >> .config <<'EOF'
-
-          # ======================================================
-          # Wireless
-          # ======================================================
-
-          CONFIG_PACKAGE_iw=y
-          CONFIG_PACKAGE_iwinfo=y
-          CONFIG_PACKAGE_wireless-regdb=y
-
-          CONFIG_PACKAGE_kmod-cfg80211=y
-          CONFIG_PACKAGE_kmod-mac80211=y
-          CONFIG_PACKAGE_kmod-iwlwifi=y
-
-          CONFIG_PACKAGE_kmod-iwlwifi-5xxx=y
-
-          EOF
-
-          make defconfig
-
-          echo "========================================"
-          echo "Wireless configuration"
-          echo "========================================"
-
+          echo
+          echo "Final configuration:"
           grep -E \
-            'CONFIG_PACKAGE_(iw|iwinfo|wireless-regdb|kmod-cfg80211|kmod-mac80211|kmod-iwlwifi)' \
+            'CONFIG_TARGET_|CONFIG_PACKAGE_(kmod-iwlwifi|iw|iwinfo|openvpn|luci-app-ssr-plus)' \
             .config || true
 
-          echo "========================================"
-
-      # ==========================================================
-      # 11. SSR Plus
-      # ==========================================================
-      - name: Configure SSR Plus
+      # ============================================================
+      # 8. 再次确认平台
+      # ============================================================
+      - name: Verify target
+        working-directory: lede
         run: |
-          cd lede
+          echo "=================================================="
+          echo " TARGET VERIFICATION"
+          echo "=================================================="
 
-          cat >> .config <<'EOF'
+          grep '^CONFIG_TARGET_x86' .config || true
 
-          # ======================================================
-          # SSR Plus
-          # ======================================================
+          echo
+          echo "Architecture:"
+          grep '^CONFIG_ARCH' .config || true
 
-          CONFIG_PACKAGE_luci-app-ssr-plus=y
+          echo
+          echo "Root filesystem:"
+          grep '^CONFIG_TARGET_ROOTFS' .config || true
 
-          EOF
-
-          make defconfig
-
-      # ==========================================================
-      # 12. OpenVPN
-      # ==========================================================
-      - name: Configure OpenVPN
+      # ============================================================
+      # 9. 检查 Intel 5100 无线相关配置
+      # ============================================================
+      - name: Verify Intel WiFi configuration
+        working-directory: lede
         run: |
-          cd lede
-
-          cat >> .config <<'EOF'
-
-          # ======================================================
-          # OpenVPN
-          # ======================================================
-
-          CONFIG_PACKAGE_openvpn-openssl=y
-          CONFIG_PACKAGE_luci-app-openvpn=y
-
-          EOF
-
-          make defconfig
-
-      # ==========================================================
-      # 13. 输出最终配置
-      # ==========================================================
-      - name: Show final configuration
-        run: |
-          cd lede
-
-          echo "========================================"
-          echo "最终 .config"
-          echo "========================================"
+          echo "=================================================="
+          echo " Intel WiFi 5100 configuration"
+          echo "=================================================="
 
           grep -E \
-            'CONFIG_TARGET|CONFIG_PACKAGE_(iw|iwinfo|wireless-regdb|kmod-cfg80211|kmod-mac80211|kmod-iwlwifi|luci-app-ssr-plus|openvpn)' \
+            'CONFIG_PACKAGE_(kmod-iwlwifi|iw|iwinfo|wireless-regdb)' \
             .config || true
 
           echo
-          echo "========================================"
-          echo "LEDE commit"
-          echo "========================================"
+          echo "Searching iwlwifi firmware packages..."
 
+          grep -E \
+            'iwlwifi.*5000|iwlwifi' \
+            .config || true
+
+      # ============================================================
+      # 10. 下载源码包
+      # ============================================================
+      - name: Download source packages
+        working-directory: lede
+        run: |
+          echo "=================================================="
+          echo " Download source packages"
+          echo "=================================================="
+
+          make download -j$(nproc) V=s
+
+      # ============================================================
+      # 11. 编译
+      # ============================================================
+      - name: Build firmware
+        working-directory: lede
+        run: |
+          echo "=================================================="
+          echo " START LEDE x86_64 BUILD"
+          echo "=================================================="
+
+          echo
+          echo "Source:"
+          git remote get-url origin
+
+          echo
+          echo "Commit:"
           git rev-parse HEAD
 
           echo
-          echo "========================================"
+          echo "Commit short:"
+          git rev-parse --short HEAD
 
-      # ==========================================================
-      # 14. 下载编译依赖
-      # ==========================================================
-      - name: Download packages
-        run: |
-          cd lede
+          echo
+          echo "Commit date:"
+          git log -1 --format='%ci'
 
-          make download -j8 V=s
+          echo
+          echo "Build started:"
+          date -u
 
-      # ==========================================================
-      # 15. 编译
-      # ==========================================================
-      - name: Build firmware
-        run: |
-          cd lede
-
-          echo "========================================"
-          echo "开始编译 OpenWrt LEDE x86_64"
-          echo "========================================"
+          echo
+          echo "=================================================="
+          echo " Compiling..."
+          echo "=================================================="
 
           make -j$(nproc) V=s
 
-      # ==========================================================
-      # 16. 显示编译结果
-      # ==========================================================
-      - name: List firmware files
+          echo
+          echo "=================================================="
+          echo " BUILD FINISHED"
+          echo "=================================================="
+
+          date -u
+
+      # ============================================================
+      # 12. 检查编译结果
+      # ============================================================
+      - name: Check build output
+        working-directory: lede
         run: |
-          cd lede
-
-          echo "========================================"
-          echo "编译完成"
-          echo "========================================"
-
-          find bin/targets/x86/64/ \
-            -maxdepth 2 \
-            -type f \
-            -printf '%p\n' \
-            | sort
+          echo "=================================================="
+          echo " BUILD OUTPUT"
+          echo "=================================================="
 
           echo
-          echo "========================================"
+          echo "bin/targets:"
+          find bin/targets -type f | sort
 
-      # ==========================================================
-      # 17. 保存 GitHub Actions Artifact
-      # ==========================================================
-      - name: Upload firmware artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: openwrt-lede-x86_64
-          path: |
-            lede/bin/targets/x86/64/*
-          if-no-files-found: error
-          retention-days: 30
+          echo
+          echo "bin/packages:"
+          find bin/packages -type f | sort | head -200
 
-      # ==========================================================
-      # 18. 获取版本信息
-      # ==========================================================
-      - name: Generate release information
-        id: release_info
+      # ============================================================
+      # 13. 输出固件版本信息
+      # ============================================================
+      - name: Show firmware version
+        working-directory: lede
         run: |
-          cd lede
+          echo "=================================================="
+          echo " FIRMWARE VERSION INFORMATION"
+          echo "=================================================="
 
-          COMMIT=$(git rev-parse --short HEAD)
+          echo
+          echo "Source repository:"
+          git remote get-url origin
 
-          echo "commit=${COMMIT}" >> "$GITHUB_OUTPUT"
+          echo
+          echo "Source branch:"
+          git branch --show-current || true
 
-          echo "========================================"
-          echo "Release commit: ${COMMIT}"
-          echo "========================================"
+          echo
+          echo "Source commit:"
+          git rev-parse HEAD
 
-      # ==========================================================
-      # 19. 打包 Release 文件
-      # ==========================================================
-      - name: Prepare release files
+          echo
+          echo "Source commit short:"
+          git rev-parse --short HEAD
+
+          echo
+          echo "Source commit date:"
+          git log -1 --format='%ci'
+
+          echo
+          echo "OpenWrt release file:"
+          if [ -f package/base-files/files/etc/openwrt_release ]; then
+            cat package/base-files/files/etc/openwrt_release
+          fi
+
+          echo
+          echo "Kernel configuration:"
+          grep '^CONFIG_KERNEL_' .config | head -50 || true
+
+      # ============================================================
+      # 14. 保存编译配置
+      # ============================================================
+      - name: Save build information
+        working-directory: lede
         run: |
+          mkdir -p ../release
+
+          cp .config ../release/x86_64.config
+
+          git rev-parse HEAD > ../release/source-commit.txt
+
+          git log -1 --format='%H%n%h%n%ci%n%s' \
+            > ../release/source-info.txt
+
+          if [ -f package/base-files/files/etc/openwrt_release ]; then
+            cp package/base-files/files/etc/openwrt_release \
+              ../release/openwrt_release
+          fi
+
+      # ============================================================
+      # 15. 打包固件
+      # ============================================================
+      - name: Package firmware
+        run: |
+          echo "=================================================="
+          echo " PACKAGE RELEASE FILES"
+          echo "=================================================="
+
           mkdir -p release
 
-          cp -av lede/bin/targets/x86/64/* \
-            release/
+          tar -czf \
+            release/lede-x86_64-firmware.tar.gz \
+            -C lede/bin targets
 
-          echo "========================================"
-          echo "Release 文件"
-          echo "========================================"
+          tar -czf \
+            release/lede-x86_64-packages.tar.gz \
+            -C lede/bin packages
 
-          ls -lah release/
+          echo
+          echo "Release files:"
+          ls -lh release
 
-      # ==========================================================
-      # 20. 创建 GitHub Release
-      # ==========================================================
+      # ============================================================
+      # 16. 生成 Release 名称
+      # ============================================================
+      - name: Generate release information
+        id: release
+        working-directory: lede
+        run: |
+          SHORT_COMMIT=$(git rev-parse --short HEAD)
+          DATE=$(date -u +'%Y%m%d-%H%M')
+
+          echo "short_commit=${SHORT_COMMIT}" >> "$GITHUB_OUTPUT"
+          echo "release_tag=lede-x86_64-${DATE}-${SHORT_COMMIT}" >> "$GITHUB_OUTPUT"
+
+          echo "Release tag:"
+          echo "lede-x86_64-${DATE}-${SHORT_COMMIT}"
+
+      # ============================================================
+      # 17. 上传 GitHub Release
+      # ============================================================
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: "lede-x86_64-${{ github.run_number }}"
-          name: "LEDE x86_64 Build ${{ github.run_number }}"
+          tag_name: ${{ steps.release.outputs.release_tag }}
+          name: LEDE x86_64 ${{ steps.release.outputs.release_tag }}
+          generate_release_notes: true
           body: |
-            ## OpenWrt LEDE x86_64
+            # LEDE x86_64
 
-            ### Source
+            ## 源码
 
             Repository:
             https://github.com/coolsnowwolf/lede
 
-            Branch:
-            `${{ env.REPO_BRANCH }}`
+            Source ref:
+            20211001
 
             Commit:
-            `${{ steps.release_info.outputs.commit }}`
+            ${{ steps.release.outputs.short_commit }}
 
-            Target:
-            `x86/64`
+            ## 平台
 
-            Build:
-            `${{ github.run_number }}`
-
-            ### Included
-
-            - x86_64
-            - Intel iwlwifi
-            - cfg80211
+            - Architecture: x86_64
+            - Target: x86
+            - WiFi: Intel iwlwifi
+            - Intel WiFi Link 5100 supported
             - mac80211
-            - wireless-regdb
+            - cfg80211
             - iw
             - iwinfo
-            - SSR Plus
+            - wireless-regdb
             - OpenVPN
+            - SSR Plus
             - kenzok8/openwrt-packages
 
-            ### Important
+            ## 构建
 
-            本固件使用的是：
-
-            `coolsnowwolf/lede`
-
-            而不是：
-
-            `openwrt/openwrt`
+            GitHub Actions:
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
           files: |
             release/*
-          draft: false
-          prerelease: false
+            lede/bin/targets/**/*.img
+            lede/bin/targets/**/*.img.gz
+            lede/bin/targets/**/*.tar.gz
+            lede/bin/targets/**/*.manifest
+            lede/bin/targets/**/*.json
+            lede/bin/targets/**/*.sha256sums
+            lede/bin/packages/**/*.ipk
+            lede/bin/packages/**/*.manifest
+            lede/bin/packages/**/*.index
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
