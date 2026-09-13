@@ -1,7 +1,9 @@
-name: Build OpenWrt x86_64 Intel5100
+name: Build LEDE x86_64 Intel5100 AP
+
 
 on:
   workflow_dispatch:
+
 
 
 jobs:
@@ -14,13 +16,17 @@ jobs:
     env:
 
       SOURCE_REPO: https://github.com/coolsnowwolf/lede.git
-      SOURCE_TAG: R22.12.1
+
+      # 2022年前后稳定版本
+      SOURCE_COMMIT: 9f26e6205
+
 
 
     steps:
 
 
-    - name: Checkout build repo
+    - name: Checkout
+
       uses: actions/checkout@v4
 
 
@@ -30,6 +36,7 @@ jobs:
       run: |
 
         sudo apt update
+
 
         sudo apt install -y \
         build-essential \
@@ -51,7 +58,9 @@ jobs:
 
     - name: Clone LEDE
 
+
       run: |
+
 
         git clone \
         ${SOURCE_REPO} \
@@ -61,47 +70,65 @@ jobs:
         cd lede
 
 
-        echo "===== FETCH TAG ====="
-
-        git fetch --tags
-
-
-        git checkout ${SOURCE_TAG}
-
-
-
-        echo "===== VERSION ====="
-
-        git describe --tags
+        echo "===== CURRENT ====="
 
         git log -1 --oneline
 
 
 
+        echo "===== CHECKOUT COMMIT ====="
+
+
+        git checkout ${SOURCE_COMMIT}
+
+
+
+        echo "===== VERSION ====="
+
+        git log -1 --oneline
+
+
+
+
+
     - name: Add wireless packages
+
 
       run: |
 
         cd lede
 
 
-        echo "CONFIG_PACKAGE_kmod-iwlwifi=y" >> .config
-
-        echo "CONFIG_PACKAGE_iwlwifi-firmware=y" >> .config
-
-        echo "CONFIG_PACKAGE_iwlwifi-firmware-5000=y" >> .config
+        cat >> .config <<EOF
 
 
-        echo "CONFIG_PACKAGE_kmod-mac80211=y" >> .config
+CONFIG_PACKAGE_kmod-iwlwifi=y
+
+CONFIG_PACKAGE_iwlwifi-firmware=y
+
+CONFIG_PACKAGE_iwlwifi-firmware-5000=y
 
 
-        echo "CONFIG_PACKAGE_hostapd-common=y" >> .config
+CONFIG_PACKAGE_kmod-mac80211=y
 
-        echo "CONFIG_PACKAGE_wpad=y" >> .config
+CONFIG_PACKAGE_kmod-cfg80211=y
+
+
+CONFIG_PACKAGE_hostapd-common=y
+
+CONFIG_PACKAGE_wpad=y
+
+
+CONFIG_PACKAGE_luci=y
+
+
+EOF
+
 
 
 
     - name: Update feeds
+
 
       run: |
 
@@ -110,13 +137,17 @@ jobs:
 
         ./scripts/feeds update -a
 
+
         ./scripts/feeds install -a
 
 
 
-    - name: Load x86 config
+
+    - name: Load config
+
 
       run: |
+
 
         cd lede
 
@@ -128,32 +159,27 @@ jobs:
 
 
 
-    - name: Verify wireless
+
+
+    - name: Download
+
 
       run: |
 
-        cd lede
-
-
-        grep iwlwifi .config || true
-
-        grep mac80211 .config || true
-
-
-
-    - name: Download sources
-
-      run: |
 
         cd lede
+
 
         make download -j4
 
 
 
+
     - name: Compile
 
+
       run: |
+
 
         cd lede
 
@@ -162,30 +188,41 @@ jobs:
 
 
 
+
+
     - name: Collect firmware
+
 
       run: |
 
-        mkdir -p output
+
+        mkdir output
 
 
         cp lede/bin/targets/x86/64/*.img.gz output/ || true
 
+
         cp lede/bin/targets/x86/64/*.img output/ || true
+
 
         cp lede/bin/targets/x86/64/*.manifest output/ || true
 
 
-        find lede/bin/targets/x86/64 -maxdepth 2 -type f
+        find lede/bin/targets/x86/64 -type f
 
 
 
-    - name: Upload firmware
+
+    - name: Upload
+
 
       uses: actions/upload-artifact@v4
 
+
       with:
 
-        name: openwrt-x86-64-intel5100
+
+        name: lede-x86_64-intel5100
+
 
         path: output/
