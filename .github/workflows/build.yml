@@ -1,7 +1,15 @@
-name: Build OpenWrt x86_64 Intel5100
+name: Build LEDE x86_64 iwlwifi5100
 
 on:
   workflow_dispatch:
+
+
+env:
+
+  SOURCE_REPO: https://github.com/coolsnowwolf/lede.git
+
+  # 不使用branch/tag
+  SOURCE_COMMIT: 9f26e6205
 
 
 jobs:
@@ -12,6 +20,7 @@ jobs:
 
 
     steps:
+
 
     - name: Checkout build repo
       uses: actions/checkout@v4
@@ -24,66 +33,58 @@ jobs:
         sudo apt update
 
         sudo apt install -y \
-        build-essential \
-        clang \
-        flex \
-        bison \
-        gawk \
-        gettext \
-        git \
-        libncurses5-dev \
-        libssl-dev \
-        python3 \
-        rsync \
-        unzip \
-        zlib1g-dev \
-        file
+          build-essential \
+          clang \
+          flex \
+          bison \
+          g++ \
+          gawk \
+          gettext \
+          git \
+          libncurses5-dev \
+          libssl-dev \
+          python3 \
+          rsync \
+          unzip \
+          zlib1g-dev \
+          file
 
 
 
-    #
-    # 固定2021/2022稳定版本
-    #
-    - name: Clone LEDE R22 source
+    - name: Clone LEDE
+
       run: |
 
         git clone \
-        https://github.com/coolsnowwolf/lede.git \
-        lede
+          ${SOURCE_REPO} \
+          lede
 
 
         cd lede
 
 
-        echo "===== TAG LIST ====="
-
-        git tag | grep R22 | tail -10
+        echo "===== checkout commit ====="
 
 
+        git checkout ${SOURCE_COMMIT}
 
-        echo "===== checkout R22.11.13 ====="
 
+        echo "===== version ====="
 
-        git checkout \
-        R22.11.13
+        git log -1
 
 
 
-        echo "===== SOURCE VERSION ====="
+    - name: Add wireless packages
 
-
-        git describe --tags
-
-
-        git log -1 --oneline
-
-
-
-
-    - name: Update feeds
       run: |
 
         cd lede
+
+
+        git clone \
+        https://github.com/kenzok8/openwrt-packages.git \
+        package/kenzo
 
 
         ./scripts/feeds update -a
@@ -92,71 +93,50 @@ jobs:
 
 
 
-    - name: Load x86_64 config
+    - name: Load x86 config
+
       run: |
 
         cd lede
 
 
-        cp ../configs/x86_64.config \
-        .config
+        cp ../x86_64.config .config
 
 
         make defconfig
 
 
 
-    - name: Verify config
-      run: |
-
-        cd lede
-
-
-        echo "===== WIFI ====="
-
-        grep IWL .config || true
-
-        grep MAC80211 .config || true
-
-        grep WPAD .config || true
-
-
-
     - name: Download sources
+
       run: |
 
         cd lede
 
-
-        make download -j4
+        make download -j8
 
 
 
     - name: Compile
+
       run: |
 
         cd lede
 
+        make -j$(nproc)
 
-        make V=s -j2
-
-
-
-    - name: Check firmware
-      run: |
-
-        ls -lh lede/bin/targets/x86/64/
 
 
     - name: Collect firmware
+
       run: |
 
-        mkdir firmware
+        mkdir output
 
 
-        cp \
+        cp -rf \
         lede/bin/targets/x86/64/* \
-        firmware/
+        output/
 
 
 
@@ -164,9 +144,8 @@ jobs:
 
       uses: actions/upload-artifact@v4
 
-
       with:
 
-        name: openwrt-x8664-intel5100
+        name: lede-x86_64-iwlwifi5100
 
-        path: firmware/
+        path: output
