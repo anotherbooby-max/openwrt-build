@@ -1,4 +1,5 @@
-name: Build OpenWrt x86_64 Intel5100 AP
+name: Build OpenWrt x86_64 iwlwifi5100
+
 
 on:
   workflow_dispatch:
@@ -15,9 +16,7 @@ jobs:
 
       SOURCE_REPO: https://github.com/coolsnowwolf/lede.git
 
-      # 2022年前后稳定提交
       SOURCE_COMMIT: 9f26e6205
-
 
       TARGET: x86_64
 
@@ -25,7 +24,7 @@ jobs:
     steps:
 
 
-    - name: Checkout build repo
+    - name: Checkout
       uses: actions/checkout@v4
 
 
@@ -36,66 +35,99 @@ jobs:
         sudo apt update
 
         sudo apt install -y \
-          build-essential \
-          clang \
-          flex \
-          bison \
-          gawk \
-          gcc-multilib \
-          g++-multilib \
-          gettext \
-          git \
-          libncurses5-dev \
-          libssl-dev \
-          python3-distutils \
-          rsync \
-          unzip \
-          zlib1g-dev \
-          file
+        build-essential \
+        gcc \
+        g++ \
+        flex \
+        bison \
+        gawk \
+        gettext \
+        git \
+        libncurses5-dev \
+        libssl-dev \
+        python3 \
+        unzip \
+        rsync \
+        zlib1g-dev \
+        file
 
 
 
-    - name: Clone LEDE source
+    - name: Clone LEDE
+
       run: |
 
         git clone \
-          ${SOURCE_REPO} \
-          lede
+        ${SOURCE_REPO} \
+        lede
 
 
         cd lede
 
-
-        echo "===== current ====="
-
-        git log -1 --oneline
-
-
-        echo "===== checkout commit ====="
 
         git checkout ${SOURCE_COMMIT}
 
 
-        echo "===== version ====="
+        echo "===== VERSION ====="
 
-        git log -1 --oneline
+        git log -1
 
 
 
     - name: Add wireless packages
+
       run: |
 
         cd lede
 
 
-        ./scripts/feeds update -a
+        mkdir -p package/custom
 
+
+        cat > package/custom/Makefile <<EOF
+
+        include \$(TOPDIR)/rules.mk
+
+
+        PKG_NAME:=iwlwifi-firmware-extra
+        PKG_RELEASE:=1
+
+
+        include \$(INCLUDE_DIR)/package.mk
+
+
+        define Package/iwlwifi-firmware-extra
+        SECTION:=firmware
+        CATEGORY:=Firmware
+        TITLE:=Intel iwlwifi 5000 firmware
+        endef
+
+
+        define Package/iwlwifi-firmware-extra/install
+
+        endef
+
+
+        \$(eval \$(call BuildPackage,iwlwifi-firmware-extra))
+
+        EOF
+
+
+
+    - name: Update feeds
+
+      run: |
+
+        cd lede
+
+        ./scripts/feeds update -a
 
         ./scripts/feeds install -a
 
 
 
-    - name: Load x86 config
+    - name: Load config
+
       run: |
 
         cd lede
@@ -108,30 +140,18 @@ jobs:
 
 
 
-    - name: Verify wireless
+    - name: Download source
+
       run: |
 
         cd lede
 
-
-        grep IWL .config || true
-
-        grep MAC80211 .config || true
-
-        grep HOSTAPD .config || true
-
-
-
-    - name: Download sources
-      run: |
-
-        cd lede
-
-        make download -j8
+        make download -j4
 
 
 
     - name: Compile
+
       run: |
 
         cd lede
@@ -142,22 +162,24 @@ jobs:
 
 
     - name: Collect firmware
+
       run: |
 
         mkdir output
 
 
-        cp -r \
+        cp -rf \
         lede/bin/targets/x86/64/* \
         output/
 
 
 
     - name: Upload firmware
+
       uses: actions/upload-artifact@v4
 
       with:
 
-        name: openwrt-x86_64-intel5100
+        name: openwrt-x86_64-iwlwifi5100
 
         path: output/
