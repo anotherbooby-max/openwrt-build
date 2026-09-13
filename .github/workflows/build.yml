@@ -1,21 +1,26 @@
-name: Build OpenWrt x86_64 Intel5100 AP
+name: Build OpenWrt x86_64 Intel5100
 
 on:
   workflow_dispatch:
 
+
 jobs:
+
   build:
 
     runs-on: ubuntu-22.04
 
+
     steps:
 
-    - name: Checkout
+    - name: Checkout build repo
       uses: actions/checkout@v4
+
 
 
     - name: Install dependencies
       run: |
+
         sudo apt update
 
         sudo apt install -y \
@@ -35,10 +40,11 @@ jobs:
         file
 
 
+
     #
-    # 使用2022以前稳定源码
+    # 固定2021/2022稳定版本
     #
-    - name: Clone LEDE
+    - name: Clone LEDE R22 source
       run: |
 
         git clone \
@@ -49,20 +55,32 @@ jobs:
         cd lede
 
 
-        echo "===== Current source ====="
+        echo "===== TAG LIST ====="
+
+        git tag | grep R22 | tail -10
+
+
+
+        echo "===== checkout R22.11.13 ====="
+
+
+        git checkout \
+        R22.11.13
+
+
+
+        echo "===== SOURCE VERSION ====="
+
+
+        git describe --tags
+
 
         git log -1 --oneline
 
 
-        #
-        # R22.11.13附近提交
-        #
-        git checkout \
-        9f26e6205
 
 
-
-    - name: Add wireless packages
+    - name: Update feeds
       run: |
 
         cd lede
@@ -74,37 +92,41 @@ jobs:
 
 
 
-    - name: Load config
+    - name: Load x86_64 config
       run: |
 
         cd lede
 
 
-        cp ../configs/x86_64.config .config
+        cp ../configs/x86_64.config \
+        .config
 
 
         make defconfig
 
 
 
-    - name: Verify wireless
+    - name: Verify config
       run: |
 
         cd lede
 
+
+        echo "===== WIFI ====="
 
         grep IWL .config || true
 
         grep MAC80211 .config || true
 
-        grep HOSTAPD .config || true
+        grep WPAD .config || true
 
 
 
-    - name: Download
+    - name: Download sources
       run: |
 
         cd lede
+
 
         make download -j4
 
@@ -115,27 +137,36 @@ jobs:
 
         cd lede
 
+
         make V=s -j2
 
+
+
+    - name: Check firmware
+      run: |
+
+        ls -lh lede/bin/targets/x86/64/
 
 
     - name: Collect firmware
       run: |
 
-        mkdir output
+        mkdir firmware
 
 
-        cp -r \
+        cp \
         lede/bin/targets/x86/64/* \
-        output/
+        firmware/
+
 
 
     - name: Upload firmware
 
       uses: actions/upload-artifact@v4
 
+
       with:
 
-        name: openwrt-x86_64-intel5100
+        name: openwrt-x8664-intel5100
 
-        path: output/
+        path: firmware/
