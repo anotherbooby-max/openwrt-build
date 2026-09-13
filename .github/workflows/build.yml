@@ -100,7 +100,7 @@ jobs:
         cd lede
 
 
-        cp ../x86_64.config .config
+        cp ../configs/x86_64.config .config
 
 
         make defconfig
