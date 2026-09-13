@@ -3,37 +3,35 @@ name: Build OpenWrt x86_64 Intel5100
 on:
   workflow_dispatch:
 
-env:
-
-  SOURCE_REPO: https://github.com/coolsnowwolf/lede.git
-
-  # 2022年稳定版本
-  SOURCE_BRANCH: master
-
-  TARGET: x86_64
-
 
 jobs:
 
- build:
+  build:
 
-  runs-on: ubuntu-22.04
-
-
-  steps:
+    runs-on: ubuntu-22.04
 
 
-  - name: Checkout build repo
-    uses: actions/checkout@v4
+    env:
+
+      SOURCE_REPO: https://github.com/coolsnowwolf/lede.git
+      SOURCE_TAG: R22.12.1
 
 
-  - name: Install dependencies
+    steps:
 
-    run: |
 
-      sudo apt update
+    - name: Checkout build repo
+      uses: actions/checkout@v4
 
-      sudo apt install -y \
+
+
+    - name: Install dependencies
+
+      run: |
+
+        sudo apt update
+
+        sudo apt install -y \
         build-essential \
         clang \
         flex \
@@ -45,113 +43,149 @@ jobs:
         libncurses5-dev \
         libssl-dev \
         python3 \
-        rsync \
         unzip \
-        zstd \
+        zlib1g-dev \
         file
 
 
 
-  - name: Clone LEDE
+    - name: Clone LEDE
 
-    run: |
+      run: |
 
+        git clone \
+        ${SOURCE_REPO} \
+        lede
 
-      git clone \
-      --depth=1 \
-      ${SOURCE_REPO} \
-      lede
 
+        cd lede
 
-      cd lede
 
+        echo "===== FETCH TAG ====="
 
-      echo "===== SOURCE ====="
+        git fetch --tags
 
-      git log -1 --oneline
 
+        git checkout ${SOURCE_TAG}
 
 
-  - name: Add wireless packages
 
+        echo "===== VERSION ====="
 
-    run: |
+        git describe --tags
 
-      cd lede
+        git log -1 --oneline
 
 
-      git clone \
-      https://github.com/kenzok8/openwrt-packages.git \
-      package/kenzo
 
+    - name: Add wireless packages
 
+      run: |
 
-  - name: Update feeds
+        cd lede
 
 
-    run: |
+        echo "CONFIG_PACKAGE_kmod-iwlwifi=y" >> .config
 
-      cd lede
+        echo "CONFIG_PACKAGE_iwlwifi-firmware=y" >> .config
 
+        echo "CONFIG_PACKAGE_iwlwifi-firmware-5000=y" >> .config
 
-      ./scripts/feeds update -a
 
-      ./scripts/feeds install -a
+        echo "CONFIG_PACKAGE_kmod-mac80211=y" >> .config
 
 
+        echo "CONFIG_PACKAGE_hostapd-common=y" >> .config
 
-  - name: Load x86 config
+        echo "CONFIG_PACKAGE_wpad=y" >> .config
 
 
-    run: |
 
+    - name: Update feeds
 
-      cd lede
+      run: |
 
+        cd lede
 
-      cp ../configs/x86_64.config .config
 
+        ./scripts/feeds update -a
 
-      make defconfig
+        ./scripts/feeds install -a
 
 
 
-  - name: Compile
+    - name: Load x86 config
 
+      run: |
 
-    run: |
+        cd lede
 
 
-      cd lede
+        cp ../configs/x86_64.config .config
 
 
-      make download -j8
+        make defconfig
 
 
-      make -j$(nproc) V=s
 
+    - name: Verify wireless
 
+      run: |
 
-  - name: Collect firmware
+        cd lede
 
 
-    run: |
+        grep iwlwifi .config || true
 
+        grep mac80211 .config || true
 
-      mkdir output
 
 
-      cp lede/bin/targets/x86/64/* output/
+    - name: Download sources
 
+      run: |
 
-  - name: Upload
+        cd lede
 
+        make download -j4
 
-    uses: actions/upload-artifact@v4
 
 
-    with:
+    - name: Compile
 
-      name: openwrt-x86-64-intel5100
+      run: |
 
-      path: output/
+        cd lede
+
+
+        make V=s -j2
+
+
+
+    - name: Collect firmware
+
+      run: |
+
+        mkdir -p output
+
+
+        cp lede/bin/targets/x86/64/*.img.gz output/ || true
+
+        cp lede/bin/targets/x86/64/*.img output/ || true
+
+        cp lede/bin/targets/x86/64/*.manifest output/ || true
+
+
+        find lede/bin/targets/x86/64 -maxdepth 2 -type f
+
+
+
+    - name: Upload firmware
+
+      uses: actions/upload-artifact@v4
+
+      with:
+
+        name: openwrt-x86-64-intel5100
+
+        path: output/
